@@ -57,9 +57,14 @@ flowchart TD
 
 ### 1. 🏥 Passive Physical Health & Recovery Tracking
 - **Automated Garmin Ingestion**: The `ploa-garmin-puller` sidecar connects to Garmin Connect using persistent session tokens (preventing rate limits).
-- **Dual-Day Synchronization**: Automatically pulls **yesterday** (to finalize total daily steps and active calories) and **today** (to capture morning wake-up sleep stages, overnight HRV, resting heart rate, and morning weigh-in).
+- **Real-Time & Daytime Pulse**: Ingests biometrics every 15 minutes during active hours (06:00 - 23:00) to keep live metrics up-to-date, with early-morning finalization for yesterday's totals.
+- **Comprehensive Biometrics Suite**: Ingests and tracks the full spectrum of Garmin telemetry:
+  - **Body Battery & Stress**: Current, highest, lowest, charged, drained, average stress, maximum stress, and stress qualifiers.
+  - **Cardiovascular & Respiratory**: Resting Heart Rate (RHR), Min/Max Heart Rate, overnight HRV (rMSSD), average SpO2, and respiration rate.
+  - **Sleep Architecture**: Sleep Score, total duration, sleep debt against personal targets, and restorative sleep ratio (Deep + REM).
+  - **Activity & Energy**: Steps, distance (meters), active vs. total caloric burn, and active minutes (moderate & vigorous).
+  - **Raw Telemetry**: Persisted in PostgreSQL as `raw_data_jsonb` for future-proof analytical queries and ad-hoc AI exploration.
 - **HRV & Resting HR Z-Scores**: Evaluates sympathetic vs parasympathetic nervous system recovery against a rolling 30-day baseline ($\mu \pm \sigma$). Classifies recovery as `PRIME`, `NORMAL`, `FATIGUED`, or `STRESSED`.
-- **Sleep Debt Engine**: Tracks cumulative sleep deficit against your personal target (e.g. 7.5 hours/night) and restorative sleep proportion (Deep + REM sleep ratio).
 - **7-day EMA Weight Smoothing**: Filters out daily water retention fluctuations using an Exponential Moving Average ($\alpha = 2/(N+1)$) towards your target goal.
 
 ### 2. 💰 Frictionless Personal Finance Ledger
@@ -200,6 +205,8 @@ All protected endpoints accept authentication through any of the following metho
 ### 1. Health & Recovery
 | Method | Endpoint | Description | Query / Body |
 |---|---|---|---|
+| **GET** | `/api/v1/health/today` | Retrieve comprehensive live biometrics for today (Body Battery, Stress, Calories, Steps, etc.). | *(None)* |
+| **POST** | `/api/v1/health/pull` | Trigger immediate on-demand synchronization from the Garmin sidecar. | *(None)* |
 | **POST** | `/api/v1/health/sync` | Ingest daily physiological metrics (idempotent upsert). | `{"date":"2026-10-19", "hrvRmssd":50, "rhr":53, ...}` |
 | **GET** | `/api/v1/health/readiness` | Compute 30-day rolling Z-scores, sleep debt, and recovery state. | `?date=today` or `?date=2026-10-19` |
 | **GET** | `/api/v1/health/weight` | Calculate 7-day EMA weight trend and delta to goal. | *(None)* |
@@ -238,6 +245,7 @@ All protected endpoints accept authentication through any of the following metho
 | Command | Action |
 |---|---|
 | `/health` | View today's readiness level (`PRIME`/`NORMAL`/`STRESSED`), HRV/RHR Z-score, sleep debt, and 7-day weight EMA. |
+| `/sync` | Trigger instant Garmin biometric sync and display live Body Battery, Stress, Steps, Calories, and HR extremes. |
 | `/finance` | View month-to-date spending pace, remaining budget, and safe daily allowance. |
 | `/briefing` | On-demand trigger to generate and deliver the morning briefing to your chat. |
 | `/help` | Display command cheat-sheet and quick-start instructions. |
@@ -249,7 +257,7 @@ All protected endpoints accept authentication through any of the following metho
 
 ## 🔧 CLI & Utility Flags
 
-### Garmin Historical Backfill
+### Garmin Historical Backfill & On-Demand Sync
 You can pull and sync past Garmin data at any time:
 ```bash
 # Backfill the past 30 days
@@ -258,8 +266,11 @@ docker exec ploa-garmin-puller python puller.py --backfill 30
 # Pull a specific date
 docker exec ploa-garmin-puller python puller.py --date 2026-10-15
 
-# Trigger an immediate sync for yesterday and today
+# Trigger an immediate sync for yesterday and today via CLI
 docker exec ploa-garmin-puller python puller.py --now
+
+# Trigger an immediate sync via internal sidecar HTTP endpoint (:8081)
+curl -X POST http://localhost:8081/pull
 ```
 
 ---
