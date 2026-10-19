@@ -64,13 +64,86 @@ public class BotMessageFactory {
                 .build();
     }
 
+    public String buildHealthSummary(com.ploa.health.engine.dto.ReadinessResult r,
+                                     com.ploa.health.engine.dto.WeightEmaResult w) {
+        String hrvZ = r.hrvZScore() != null ? String.format("%+.2f", r.hrvZScore()) : "N/A";
+        String rhrZ = r.rhrZScore() != null ? String.format("%+.2f", r.rhrZScore()) : "N/A";
+        String hrvAvg = r.hrv30dMean() != null ? String.format("%.1f", r.hrv30dMean()) : "N/A";
+        String rhrAvg = r.rhr30dMean() != null ? String.format("%.1f", r.rhr30dMean()) : "N/A";
+        String hrvVal = r.hrvRmssd() != null ? String.format("%.0f", r.hrvRmssd()) : "N/A";
+        String rhrVal = r.rhr() != null ? String.valueOf(r.rhr()) : "N/A";
+        String deltaKg = w.deltaToTargetKg() != null ? String.format("%+.1f", w.deltaToTargetKg()) : "N/A";
+        String trendKg = w.weeklyTrendKg() != null ? String.format("%+.2f kg/wk", w.weeklyTrendKg()) : "N/A";
+
+        return """
+                🏥 *Daily Health & Recovery Report*
+                📅 Date: *%s*
+                
+                🏃 *Readiness: %s*
+                • HRV rMSSD: *%s ms* (Baseline: %s ms, Z: *%s*)
+                • Resting HR: *%s bpm* (Baseline: %s bpm, Z: *%s*)
+                • Sleep Total: *%d min* (Debt: *%d min*)
+                
+                ⚖️ *Weight Trend:*
+                • Latest: *%.1f kg* (7-day EMA: *%.1f kg*)
+                • Target: *%.1f kg* (Delta: *%s kg*)
+                • Weekly Trend: *%s*
+                
+                💡 _%s_
+                """.formatted(
+                r.date(),
+                r.level(),
+                hrvVal, hrvAvg, hrvZ,
+                rhrVal, rhrAvg, rhrZ,
+                r.sleepTotalMin() != null ? r.sleepTotalMin() : 0,
+                r.sleepDebtMin() != null ? r.sleepDebtMin() : 0,
+                w.latestWeightKg() != null ? w.latestWeightKg() : 0.0,
+                w.ema7Kg() != null ? w.ema7Kg() : 0.0,
+                w.targetWeightKg() != null ? w.targetWeightKg() : 0.0,
+                deltaKg,
+                trendKg,
+                r.summary()
+        );
+    }
+
+    public String buildFinanceSummary(com.ploa.finance.engine.dto.BurnRateResult f) {
+        return """
+                💰 *Monthly Financial Report*
+                📅 Progress: *%d / %d days* (%d days left)
+                
+                📊 *Budget Overview:*
+                • Monthly Budget: *%s VND*
+                • MTD Total Spend: *%s VND*
+                • Discretionary: *%s VND* | Fixed: *%s VND*
+                • Remaining Budget: *%s VND*
+                
+                ⚡ *Pacing & Allowance:*
+                • Daily Burn Rate: *%s VND/day*
+                • Safe Daily Allowance: *%s VND/day*
+                • Savings Rate: *%.1f%%*
+                """.formatted(
+                f.daysElapsed(),
+                f.daysElapsed() + f.daysRemaining(),
+                f.daysRemaining(),
+                VND_FORMAT.format(f.monthlyBudgetVnd()),
+                VND_FORMAT.format(f.mtdTotalSpendVnd()),
+                VND_FORMAT.format(f.mtdDiscretionaryVnd()),
+                VND_FORMAT.format(f.mtdFixedVnd()),
+                VND_FORMAT.format(f.remainingBudgetVnd()),
+                VND_FORMAT.format((long) f.dailyBurnRateVnd()),
+                VND_FORMAT.format((long) f.safeDailyAllowanceVnd()),
+                f.monthlySavingsRatePct()
+        );
+    }
+
     public String helpText() {
         return """
                 🤖 *Personal Life OS Agent*
                 
                 *Commands:*
-                /health — 7-day HRV/RHR Z-score + weight EMA
-                /finance — MTD spend & category breakdown
+                /health — Today's HRV/RHR recovery + weight EMA
+                /finance — Month-to-date spending & burn rate
+                /briefing — Generate and send today's AI morning briefing
                 /help — Show this message
                 
                 *Quick Expense:*

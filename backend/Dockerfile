@@ -1,11 +1,3 @@
-# ── Build stage ──────────────────────────────────────────────────────────────
-FROM maven:3.9-eclipse-temurin-25 AS build
-
-WORKDIR /app
-COPY pom.xml .
-COPY src ./src
-RUN mvn clean package -DskipTests -B -q
-
 # ── Runtime stage ────────────────────────────────────────────────────────────
 FROM eclipse-temurin:25-jre-noble
 
@@ -13,7 +5,7 @@ WORKDIR /app
 
 RUN mkdir -p /app/logs
 
-COPY --from=build /app/target/*.jar app.jar
+COPY target/*.jar app.jar
 
 EXPOSE 8080
 

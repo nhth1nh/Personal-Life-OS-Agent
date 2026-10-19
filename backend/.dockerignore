@@ -1,6 +1,5 @@
-target/
-*.class
-*.jar
+target/*
+!target/*.jar
 .git
 .idea/
 *.iml

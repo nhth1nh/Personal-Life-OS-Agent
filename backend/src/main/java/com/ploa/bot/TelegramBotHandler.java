@@ -3,10 +3,13 @@ package com.ploa.bot;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.ploa.ai.VisionOcrService;
 import com.ploa.ai.dto.OcrResult;
+import com.ploa.assistant.AssistantService;
+import com.ploa.briefing.BriefingOrchestrator;
 import com.ploa.config.PloaProperties;
 import com.ploa.finance.model.SpendType;
 import com.ploa.finance.model.Transaction;
 import com.ploa.finance.service.FinanceService;
+import com.ploa.health.service.HealthService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
@@ -34,7 +37,7 @@ import java.util.UUID;
  * Telegram Long-Polling Bot Handler.
  * Handles:
  *  - Photo messages → Vision OCR → save draft transaction → inline keyboard
- *  - Text messages → quick expense parsing or commands (/health, /finance)
+ *  - Text messages → quick expense parsing or Life OS conversational AI assistant
  *  - Callback queries → confirm, change category, delete
  */
 @Component
@@ -47,15 +50,24 @@ public class TelegramBotHandler implements SpringLongPollingBot, LongPollingUpda
     private final PloaProperties properties;
     private final VisionOcrService ocrService;
     private final FinanceService financeService;
+    private final HealthService healthService;
+    private final BriefingOrchestrator briefingOrchestrator;
+    private final AssistantService assistantService;
     private final BotMessageFactory messageFactory;
 
     public TelegramBotHandler(PloaProperties properties,
                                VisionOcrService ocrService,
                                FinanceService financeService,
+                               HealthService healthService,
+                               BriefingOrchestrator briefingOrchestrator,
+                               AssistantService assistantService,
                                BotMessageFactory messageFactory) {
         this.properties = properties;
         this.ocrService = ocrService;
         this.financeService = financeService;
+        this.healthService = healthService;
+        this.briefingOrchestrator = briefingOrchestrator;
+        this.assistantService = assistantService;
         this.messageFactory = messageFactory;
         String token = properties.telegram().botToken();
         this.telegramClient = (token != null && !token.isBlank())
@@ -141,22 +153,57 @@ public class TelegramBotHandler implements SpringLongPollingBot, LongPollingUpda
             return;
         }
 
-        // Quick expense: "50k cafe"
-        sendText(chatId, "💬 Parsing expense...");
-        OcrResult ocr = ocrService.extractFromText(text);
-        Transaction tx = buildTransaction(ocr, null);
-        Transaction saved = financeService.save(tx);
-        SendMessage msg = messageFactory.buildConfirmationMessage(chatId, saved, ocr);
-        telegramClient.execute(msg);
+        if (isExpenseIntent(text)) {
+            // Quick expense: "50k cafe", "bún bò 45k"
+            sendText(chatId, "💬 Parsing expense...");
+            OcrResult ocr = ocrService.extractFromText(text);
+            Transaction tx = buildTransaction(ocr, null);
+            Transaction saved = financeService.save(tx);
+            SendMessage msg = messageFactory.buildConfirmationMessage(chatId, saved, ocr);
+            telegramClient.execute(msg);
+        } else {
+            // Life OS AI Assistant chat!
+            sendText(chatId, "🤔 *PLOA is thinking...*");
+            String reply = assistantService.chat(text);
+            sendText(chatId, reply);
+        }
+    }
+
+    private boolean isExpenseIntent(String text) {
+        String t = text.trim();
+        // Explicit expense command
+        if (t.matches("(?i)^/(expense|chi|spend)\\s+.*")) return true;
+        // If it looks like a question or conversational prompt, treat as chat
+        if (t.contains("?") || t.matches("(?i).*(bao nhiêu|thế nào|sao rồi|như nào|như thế nào|hôm nay|có nên|tại sao|làm sao|chào|hello|hi|what|how|why|should|can i|is it).*")) {
+            return false;
+        }
+        // Typical expense patterns:
+        // 1. Contains a number + currency token: "50k", "120.000đ", "200k", "500 ngàn", "1.5tr"
+        // 2. Starts with number + space + text: "50 cafe"
+        return t.matches("(?i).*\\b\\d+([.,]\\d+)?\\s*(k|vnd|đ|d|nghìn|ngàn|tram|tr|triệu|cành|lít)\\b.*")
+                || t.matches("^\\d+([.,]\\d+)?\\s+[a-zA-ZÀ-ỹ].*");
     }
 
     // ── Command handler ───────────────────────────────────────────────────────
 
     private void handleCommand(long chatId, String command) throws TelegramApiException {
-        switch (command.split("@")[0]) {
+        switch (command.split("@")[0].toLowerCase()) {
             case "/start", "/help" -> sendText(chatId, messageFactory.helpText());
-            case "/health" -> sendText(chatId, "📊 /health command coming in Phase 3");
-            case "/finance" -> sendText(chatId, "💰 /finance command coming in Phase 3");
+            case "/health" -> {
+                LocalDate today = LocalDate.now();
+                var readiness = healthService.computeReadiness(today);
+                var weight = healthService.computeWeightEma();
+                sendText(chatId, messageFactory.buildHealthSummary(readiness, weight));
+            }
+            case "/finance" -> {
+                var burnRate = financeService.getBurnRate();
+                sendText(chatId, messageFactory.buildFinanceSummary(burnRate));
+            }
+            case "/briefing" -> {
+                sendText(chatId, "⏳ *Synthesizing daily briefing with AI...*");
+                String briefing = briefingOrchestrator.generateBriefingPreview();
+                sendText(chatId, briefing);
+            }
             default -> sendText(chatId, "Unknown command. Try /help");
         }
     }
@@ -226,11 +273,19 @@ public class TelegramBotHandler implements SpringLongPollingBot, LongPollingUpda
             log.warn("TelegramClient not initialized, cannot send text");
             return;
         }
-        telegramClient.execute(SendMessage.builder()
-                .chatId(chatId)
-                .text(text)
-                .parseMode("Markdown")
-                .build());
+        try {
+            telegramClient.execute(SendMessage.builder()
+                    .chatId(chatId)
+                    .text(text)
+                    .parseMode("Markdown")
+                    .build());
+        } catch (TelegramApiException e) {
+            log.warn("Markdown send failed ({}), retrying without parse mode", e.getMessage());
+            telegramClient.execute(SendMessage.builder()
+                    .chatId(chatId)
+                    .text(text)
+                    .build());
+        }
     }
 
     private void editText(long chatId, int msgId, String text) throws TelegramApiException {
