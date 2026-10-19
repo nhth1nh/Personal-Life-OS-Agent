@@ -178,15 +178,24 @@ public class BriefingOrchestrator {
                 return;
             }
         }
+        String html = com.ploa.bot.TelegramFormatter.markdownToHtml(text);
         properties.telegram().allowedChatIdList().forEach(chatId -> {
             try {
                 telegramClient.execute(SendMessage.builder()
                         .chatId(chatId)
-                        .text(text)
-                        .parseMode("Markdown")
+                        .text(html)
+                        .parseMode("HTML")
                         .build());
             } catch (Exception e) {
-                log.error("Failed to send briefing to chat {}: {}", chatId, e.getMessage());
+                log.warn("Failed to send HTML briefing to chat {}, retrying plain text: {}", chatId, e.getMessage());
+                try {
+                    telegramClient.execute(SendMessage.builder()
+                            .chatId(chatId)
+                            .text(text)
+                            .build());
+                } catch (Exception ex) {
+                    log.error("Failed to send briefing to chat {}: {}", chatId, ex.getMessage());
+                }
             }
         });
     }
