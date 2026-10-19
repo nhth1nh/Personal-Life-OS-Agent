@@ -154,6 +154,7 @@ public class BotMessageFactory {
                 /finance — Month-to-date spending & burn rate
                 /briefing — Generate and send today's AI morning briefing
                 /sync — Pull latest live biometrics from Garmin Connect
+                /new — Clear chat memory & start a fresh conversation
                 /help — Show this message
                 
                 *Quick Expense:*

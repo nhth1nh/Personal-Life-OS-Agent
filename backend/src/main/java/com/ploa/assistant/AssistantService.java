@@ -48,6 +48,11 @@ public class AssistantService {
         return chat("default-session", userMessage);
     }
 
+    public void clearChatHistory(String chatId) {
+        memoryService.clearChatHistory(chatId);
+        log.info("Cleared chat memory history for session: {}", chatId);
+    }
+
     public String chat(String chatId, String userMessage) {
         log.info("Assistant chat query received from [{}]: {}", chatId, userMessage);
         LocalDate today = LocalDate.now();

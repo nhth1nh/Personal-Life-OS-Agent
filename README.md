@@ -260,6 +260,7 @@ All protected endpoints accept authentication through any of the following metho
 | `/sync` | Trigger instant Garmin biometric sync and display live Body Battery, Stress, Steps, Calories, and HR extremes. |
 | `/finance` | View month-to-date spending pace, remaining budget, and safe daily allowance. |
 | `/briefing` | On-demand trigger to generate and deliver the morning briefing to your chat. |
+| `/new` | Clear short-term chat memory to start a fresh conversation session. |
 | `/help` | Display command cheat-sheet and quick-start instructions. |
 | **Photo / Receipt** | Automatically triggers Vision OCR entity extraction and draft creation. |
 | **Text Expense** | E.g. `50k coffee`, `120k groceries` $\rightarrow$ parses into structured ledger. |
