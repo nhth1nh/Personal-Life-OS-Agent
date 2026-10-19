@@ -11,6 +11,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDate;
+import java.util.List;
 import java.util.UUID;
 
 @Service
@@ -60,5 +61,13 @@ public class FinanceService {
     @Transactional(readOnly = true)
     public BurnRateResult getBurnRate() {
         return burnRateEngine.compute();
+    }
+
+    @Transactional(readOnly = true)
+    public List<Transaction> getRecentTransactions(int limit) {
+        LocalDate startOfMonth = LocalDate.now().withDayOfMonth(1);
+        LocalDate today = LocalDate.now();
+        List<Transaction> list = repo.findByTxDateBetweenOrderByTxDateDesc(startOfMonth, today);
+        return list.size() > limit ? list.subList(0, limit) : list;
     }
 }

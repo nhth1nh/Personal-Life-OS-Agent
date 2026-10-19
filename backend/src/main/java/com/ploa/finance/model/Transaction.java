@@ -1,7 +1,6 @@
 package com.ploa.finance.model;
 
 import com.fasterxml.jackson.databind.JsonNode;
-import com.ploa.finance.model.converter.JsonNodeConverter;
 import jakarta.persistence.*;
 import java.time.LocalDate;
 import java.time.OffsetDateTime;
@@ -43,7 +42,7 @@ public class Transaction {
     @Column(name = "source_platform", length = 50)
     private String sourcePlatform;
 
-    @Convert(converter = JsonNodeConverter.class)
+    @org.hibernate.annotations.JdbcTypeCode(org.hibernate.type.SqlTypes.JSON)
     @Column(name = "items_jsonb", columnDefinition = "jsonb")
     private JsonNode itemsJsonb;
 

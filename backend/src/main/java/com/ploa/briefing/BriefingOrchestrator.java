@@ -85,6 +85,17 @@ public class BriefingOrchestrator {
         }
     }
 
+    public String generateBriefingPreview() {
+        LocalDate today = LocalDate.now();
+        DailyBriefingContext ctx = new DailyBriefingContext(
+                today,
+                healthService.computeReadiness(today),
+                healthService.computeWeightEma(),
+                financeService.getBurnRate()
+        );
+        return generateBriefing(ctx);
+    }
+
     private String generateBriefing(DailyBriefingContext ctx) {
         String context = buildContextString(ctx);
 

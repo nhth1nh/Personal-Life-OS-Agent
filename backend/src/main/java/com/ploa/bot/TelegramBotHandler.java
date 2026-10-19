@@ -208,6 +208,9 @@ public class TelegramBotHandler implements SpringLongPollingBot, LongPollingUpda
         tx.setNote(ocr.note());
         tx.setDocumentType(ocr.documentType());
         tx.setSourcePlatform(ocr.sourcePlatform());
+        if (ocr.lineItems() != null && !ocr.lineItems().isEmpty()) {
+            tx.setItemsJsonb(MAPPER.valueToTree(ocr.lineItems()));
+        }
         tx.setTelegramMsgId(telegramMsgId);
         tx.setConfirmed(false);
         return tx;
