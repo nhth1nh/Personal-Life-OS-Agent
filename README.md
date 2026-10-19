@@ -109,13 +109,13 @@ PLOA/
 │       ├── PloaApplication.java
 │       ├── config/                 # SecurityConfig, PloaProperties
 │       ├── health/                 # Health Domain
-│       │   ├── api/                # HealthController (/sync, /readiness, /weight)
-│       │   ├── engine/             # ReadinessEngine, WeightEmaEngine
+│       │   ├── api/                # HealthController (/sync, /readiness, /weight, /sleep)
+│       │   ├── engine/             # ReadinessEngine, WeightEmaEngine, SleepEngine
 │       │   ├── model/              # HealthMetric entity
 │       │   ├── repository/         # HealthMetricRepository
 │       │   └── service/            # HealthService
 │       ├── finance/                # Finance Domain
-│       │   ├── api/                # FinanceController (/burn-rate, /transactions)
+│       │   ├── api/                # FinanceController (/burn-rate, /transactions, /ocr)
 │       │   ├── engine/             # BurnRateEngine
 │       │   ├── model/              # Transaction entity, SpendType enum
 │       │   ├── repository/         # TransactionRepository
@@ -203,12 +203,14 @@ All protected endpoints accept authentication through any of the following metho
 | **POST** | `/api/v1/health/sync` | Ingest daily physiological metrics (idempotent upsert). | `{"date":"2026-10-19", "hrvRmssd":50, "rhr":53, ...}` |
 | **GET** | `/api/v1/health/readiness` | Compute 30-day rolling Z-scores, sleep debt, and recovery state. | `?date=today` or `?date=2026-10-19` |
 | **GET** | `/api/v1/health/weight` | Calculate 7-day EMA weight trend and delta to goal. | *(None)* |
+| **GET** | `/api/v1/health/sleep` | Retrieve sleep breakdown (deep, light, REM) and 7-day weekly trend. | *(None)* |
 
 ### 2. Financial Ledger
 | Method | Endpoint | Description | Query / Body |
 |---|---|---|---|
 | **GET** | `/api/v1/finance/burn-rate` | Retrieve month-to-date burn rate, remaining budget, and daily allowance. | *(None)* |
 | **GET** | `/api/v1/finance/transactions` | List confirmed and draft transactions for the current month. | `?limit=30` |
+| **POST** | `/api/v1/finance/ocr` | Upload and extract structured receipt data from an image file. | Multipart form-data `file=@receipt.jpg` |
 
 ### 3. AI Assistant & Chat
 | Method | Endpoint | Description | Query / Body |
