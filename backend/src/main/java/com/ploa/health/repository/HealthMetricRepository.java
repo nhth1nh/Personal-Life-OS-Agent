@@ -1,13 +1,14 @@
 package com.ploa.health.repository;
 
-import com.ploa.health.model.HealthMetric;
+import java.time.LocalDate;
+import java.util.List;
+
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
-import java.time.LocalDate;
-import java.util.List;
+import com.ploa.health.model.HealthMetric;
 
 @Repository
 public interface HealthMetricRepository extends JpaRepository<HealthMetric, LocalDate> {
@@ -57,4 +58,12 @@ public interface HealthMetricRepository extends JpaRepository<HealthMetric, Loca
             LIMIT :limit
             """)
     List<HealthMetric> findLatestWeightEntries(@Param("limit") int limit);
+
+    @Query("""
+        SELECT h FROM HealthMetric h
+        WHERE h.sleepTotalMin IS NOT NULL
+        ORDER BY h.date DESC
+        LIMIT :limit
+        """)
+    List<HealthMetric> findLatestSleepEntries(@Param("limit") int limit);
 }

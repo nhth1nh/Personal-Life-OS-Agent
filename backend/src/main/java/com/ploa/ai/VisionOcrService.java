@@ -1,5 +1,6 @@
 package com.ploa.ai;
 
+import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.ploa.ai.dto.OcrResult;
 import org.slf4j.Logger;
@@ -7,8 +8,10 @@ import org.slf4j.LoggerFactory;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.chat.messages.UserMessage;
 import org.springframework.ai.content.Media;
+import org.springframework.core.io.ByteArrayResource;
 import org.springframework.stereotype.Service;
 import org.springframework.util.MimeType;
+import org.springframework.util.MimeTypeUtils;
 
 import java.net.URI;
 import java.time.LocalDate;
@@ -24,7 +27,8 @@ public class VisionOcrService {
 
     private static final Logger log = LoggerFactory.getLogger(VisionOcrService.class);
     private static final ObjectMapper MAPPER = new ObjectMapper()
-            .findAndRegisterModules(); // registers JavaTimeModule for LocalDate
+            .findAndRegisterModules() // registers JavaTimeModule for LocalDate
+            .configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
 
     private static final String OCR_SYSTEM_PROMPT = """
             You are a strict JSON extraction engine. Extract financial transaction data from the provided image.
@@ -57,6 +61,33 @@ public class VisionOcrService {
     }
 
     /**
+     * Extract structured transaction data from raw image bytes.
+     * Passes ByteArrayResource so Spring AI encodes as base64 data URI with exact MIME type.
+     *
+     * @param imageBytes raw image bytes
+     * @param mimeType   image MIME type (e.g., "image/jpeg", "image/png")
+     * @return parsed OcrResult, or fallback with nulls on failure
+     */
+    public OcrResult extractFromImage(byte[] imageBytes, String mimeType) {
+        log.info("Running Vision OCR on image bytes (size: {} bytes, mime: {})",
+                imageBytes != null ? imageBytes.length : 0, mimeType);
+        if (imageBytes == null || imageBytes.length == 0) {
+            log.warn("Empty image bytes provided to Vision OCR");
+            return fallbackResult("Empty image");
+        }
+        try {
+            MimeType type = (mimeType != null && !mimeType.isBlank())
+                    ? MimeTypeUtils.parseMimeType(mimeType)
+                    : MimeTypeUtils.IMAGE_JPEG;
+            Media media = new Media(type, new ByteArrayResource(imageBytes));
+            return executeOcr(media);
+        } catch (Exception e) {
+            log.error("OCR extraction failed: {}", e.getMessage(), e);
+            return fallbackResult("OCR failed: " + e.getMessage());
+        }
+    }
+
+    /**
      * Extract structured transaction data from an image URL.
      *
      * @param imageUrl   URL or data URI of the receipt/transfer image
@@ -66,32 +97,42 @@ public class VisionOcrService {
     public OcrResult extractFromImage(String imageUrl, String mimeType) {
         log.info("Running Vision OCR on image: {}", imageUrl);
         try {
-            Media media = new Media(MimeType.valueOf(mimeType), URI.create(imageUrl));
-            UserMessage userMessage = UserMessage.builder()
-                    .text("Extract the financial transaction from this image.")
-                    .media(media)
-                    .build();
-
-            String raw = chatClient.prompt()
-                    .system(OCR_SYSTEM_PROMPT)
-                    .messages(userMessage)
-                    .call()
-                    .content();
-
-            log.debug("OCR raw response: {}", raw);
-
-            // Strip markdown code fences if present
-            String json = raw.strip();
-            if (json.startsWith("```")) {
-                json = json.replaceFirst("```[a-z]*\\n?", "").replaceAll("```$", "").strip();
-            }
-
-            return MAPPER.readValue(json, OcrResult.class);
+            MimeType type = (mimeType != null && !mimeType.isBlank())
+                    ? MimeTypeUtils.parseMimeType(mimeType)
+                    : MimeTypeUtils.IMAGE_JPEG;
+            Media media = new Media(type, URI.create(imageUrl));
+            return executeOcr(media);
         } catch (Exception e) {
             log.error("OCR extraction failed: {}", e.getMessage(), e);
-            return new OcrResult("UNKNOWN", null, LocalDate.now(), null,
-                    "VND", "Other", "DISCRETIONARY", null, "OCR failed", null);
+            return fallbackResult("OCR failed: " + e.getMessage());
         }
+    }
+
+    private OcrResult executeOcr(Media media) throws Exception {
+        UserMessage userMessage = UserMessage.builder()
+                .text("Extract the financial transaction from this image.")
+                .media(media)
+                .build();
+
+        String raw = chatClient.prompt()
+                .system(OCR_SYSTEM_PROMPT)
+                .messages(userMessage)
+                .call()
+                .content();
+
+        log.debug("OCR raw response: {}", raw);
+
+        String json = raw != null ? raw.strip() : "{}";
+        if (json.startsWith("```")) {
+            json = json.replaceFirst("```[a-z]*\\n?", "").replaceAll("```$", "").strip();
+        }
+
+        return MAPPER.readValue(json, OcrResult.class);
+    }
+
+    private OcrResult fallbackResult(String note) {
+        return new OcrResult("UNKNOWN", null, LocalDate.now(), null,
+                "VND", "Other", "DISCRETIONARY", null, note, null);
     }
 
     /**

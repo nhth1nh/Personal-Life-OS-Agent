@@ -19,6 +19,7 @@ import org.telegram.telegrambots.longpolling.starter.SpringLongPollingBot;
 import org.telegram.telegrambots.meta.api.methods.GetFile;
 import org.telegram.telegrambots.meta.api.methods.send.SendMessage;
 import org.telegram.telegrambots.meta.api.methods.updatingmessages.EditMessageText;
+import org.telegram.telegrambots.meta.api.objects.Document;
 import org.telegram.telegrambots.meta.api.objects.File;
 import org.telegram.telegrambots.meta.api.objects.PhotoSize;
 import org.telegram.telegrambots.meta.api.objects.Update;
@@ -28,6 +29,8 @@ import org.telegram.telegrambots.meta.api.objects.replykeyboard.buttons.InlineKe
 import org.telegram.telegrambots.meta.exceptions.TelegramApiException;
 import org.telegram.telegrambots.meta.generics.TelegramClient;
 
+import java.io.IOException;
+import java.io.InputStream;
 import java.time.LocalDate;
 import java.util.Comparator;
 import java.util.List;
@@ -105,6 +108,8 @@ public class TelegramBotHandler implements SpringLongPollingBot, LongPollingUpda
                 }
                 if (update.getMessage().hasPhoto()) {
                     handlePhoto(update);
+                } else if (update.getMessage().hasDocument() && isImageDocument(update.getMessage().getDocument())) {
+                    handleDocumentPhoto(update);
                 } else if (update.getMessage().hasText()) {
                     handleText(update);
                 }
@@ -129,17 +134,57 @@ public class TelegramBotHandler implements SpringLongPollingBot, LongPollingUpda
                 .max(Comparator.comparingInt(PhotoSize::getFileSize))
                 .orElseThrow();
 
-        // Download file URL
+        // Download file bytes directly from Telegram to prevent remote mime-type mismatch
         File file = telegramClient.execute(GetFile.builder().fileId(photo.getFileId()).build());
-        String fileUrl = "https://api.telegram.org/file/bot"
-                + properties.telegram().botToken() + "/" + file.getFilePath();
+        byte[] photoBytes;
+        try (InputStream is = telegramClient.downloadFileAsStream(file)) {
+            photoBytes = is.readAllBytes();
+        } catch (IOException e) {
+            log.error("Failed to read photo stream from Telegram: {}", e.getMessage(), e);
+            sendText(chatId, "❌ Failed to download photo from Telegram.");
+            return;
+        }
 
-        OcrResult ocr = ocrService.extractFromImage(fileUrl, "image/jpeg");
+        OcrResult ocr = ocrService.extractFromImage(photoBytes, "image/jpeg");
         Transaction tx = buildTransaction(ocr, msgId);
         Transaction saved = financeService.save(tx);
 
         SendMessage msg = messageFactory.buildConfirmationMessage(chatId, saved, ocr);
         telegramClient.execute(msg);
+    }
+
+    private void handleDocumentPhoto(Update update) throws TelegramApiException {
+        long chatId = update.getMessage().getChatId();
+        long msgId = update.getMessage().getMessageId();
+        Document doc = update.getMessage().getDocument();
+
+        sendText(chatId, "🔍 Analyzing receipt document...");
+
+        File file = telegramClient.execute(GetFile.builder().fileId(doc.getFileId()).build());
+        byte[] photoBytes;
+        try (InputStream is = telegramClient.downloadFileAsStream(file)) {
+            photoBytes = is.readAllBytes();
+        } catch (IOException e) {
+            log.error("Failed to read document stream from Telegram: {}", e.getMessage(), e);
+            sendText(chatId, "❌ Failed to download document from Telegram.");
+            return;
+        }
+
+        String mime = (doc.getMimeType() != null && !doc.getMimeType().isBlank())
+                ? doc.getMimeType()
+                : "image/jpeg";
+        OcrResult ocr = ocrService.extractFromImage(photoBytes, mime);
+        Transaction tx = buildTransaction(ocr, msgId);
+        Transaction saved = financeService.save(tx);
+
+        SendMessage msg = messageFactory.buildConfirmationMessage(chatId, saved, ocr);
+        telegramClient.execute(msg);
+    }
+
+    private boolean isImageDocument(Document doc) {
+        if (doc == null) return false;
+        String mime = doc.getMimeType();
+        return mime != null && mime.startsWith("image/");
     }
 
     // ── Text handler ──────────────────────────────────────────────────────────

@@ -1,18 +1,21 @@
 package com.ploa.health.service;
 
-import com.ploa.health.api.dto.HealthSyncRequest;
-import com.ploa.health.engine.ReadinessEngine;
-import com.ploa.health.engine.WeightEmaEngine;
-import com.ploa.health.engine.dto.ReadinessResult;
-import com.ploa.health.engine.dto.WeightEmaResult;
-import com.ploa.health.model.HealthMetric;
-import com.ploa.health.repository.HealthMetricRepository;
+import java.time.LocalDate;
+
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.time.LocalDate;
+import com.ploa.health.api.dto.HealthSyncRequest;
+import com.ploa.health.engine.ReadinessEngine;
+import com.ploa.health.engine.SleepEngine;
+import com.ploa.health.engine.WeightEmaEngine;
+import com.ploa.health.engine.dto.ReadinessResult;
+import com.ploa.health.engine.dto.SleepResult;
+import com.ploa.health.engine.dto.WeightEmaResult;
+import com.ploa.health.model.HealthMetric;
+import com.ploa.health.repository.HealthMetricRepository;
 
 @Service
 public class HealthService {
@@ -22,13 +25,16 @@ public class HealthService {
     private final HealthMetricRepository repo;
     private final ReadinessEngine readinessEngine;
     private final WeightEmaEngine weightEmaEngine;
+    private final SleepEngine sleepEngine;
 
     public HealthService(HealthMetricRepository repo,
                          ReadinessEngine readinessEngine,
-                         WeightEmaEngine weightEmaEngine) {
+                         WeightEmaEngine weightEmaEngine,
+                         SleepEngine sleepEngine) {
         this.repo = repo;
         this.readinessEngine = readinessEngine;
         this.weightEmaEngine = weightEmaEngine;
+        this.sleepEngine = sleepEngine;
     }
 
     /**
@@ -68,5 +74,10 @@ public class HealthService {
     @Transactional(readOnly = true)
     public WeightEmaResult computeWeightEma() {
         return weightEmaEngine.compute();
+    }
+
+    @Transactional(readOnly = true)
+    public SleepResult computeSleepTrend() {
+        return sleepEngine.compute();
     }
 }

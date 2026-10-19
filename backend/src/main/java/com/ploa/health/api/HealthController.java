@@ -1,17 +1,25 @@
 package com.ploa.health.api;
 
-import com.ploa.health.api.dto.HealthSyncRequest;
-import com.ploa.health.api.dto.HealthSyncResponse;
-import com.ploa.health.engine.dto.ReadinessResult;
-import com.ploa.health.engine.dto.WeightEmaResult;
-import com.ploa.health.service.HealthService;
-import jakarta.validation.Valid;
+import java.time.LocalDate;
+
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.ResponseEntity;
-import org.springframework.web.bind.annotation.*;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.RestController;
 
-import java.time.LocalDate;
+import com.ploa.health.api.dto.HealthSyncRequest;
+import com.ploa.health.api.dto.HealthSyncResponse;
+import com.ploa.health.engine.dto.ReadinessResult;
+import com.ploa.health.engine.dto.SleepResult;
+import com.ploa.health.engine.dto.WeightEmaResult;
+import com.ploa.health.service.HealthService;
+
+import jakarta.validation.Valid;
 
 @RestController
 @RequestMapping("/api/v1/health")
@@ -51,5 +59,10 @@ public class HealthController {
     @GetMapping("/weight")
     public ResponseEntity<WeightEmaResult> getWeightTrend() {
         return ResponseEntity.ok(healthService.computeWeightEma());
+    }
+
+    @GetMapping("/sleep")
+    public ResponseEntity<SleepResult> getSleepTrend() {
+        return ResponseEntity.ok(healthService.computeSleepTrend());
     }
 }
