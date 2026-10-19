@@ -74,6 +74,7 @@ public class AssistantService {
     private String buildCurrentDataJson() {
         try {
             Map<String, Object> data = new LinkedHashMap<>();
+            data.put("garmin_live_biometrics", assistantTools.getLiveGarminMetrics(null));
             data.put("health_readiness", assistantTools.getHealthReadiness(null));
             data.put("sleep_stages", assistantTools.getSleepBreakdown());
             data.put("weight_trend", assistantTools.getWeightTrend());

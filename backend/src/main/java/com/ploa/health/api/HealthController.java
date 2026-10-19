@@ -65,4 +65,30 @@ public class HealthController {
     public ResponseEntity<SleepResult> getSleepTrend() {
         return ResponseEntity.ok(healthService.computeSleepTrend());
     }
+
+    /**
+     * Get full live Garmin biometrics for today (Body Battery, Stress, Calories, Steps, SpO2, Heart Rate).
+     */
+    @GetMapping("/today")
+    public ResponseEntity<com.ploa.health.model.HealthMetric> getTodayMetrics() {
+        return ResponseEntity.ok(healthService.getMetricsForDate(LocalDate.now()));
+    }
+
+    /**
+     * Trigger an on-demand real-time pull from Garmin Connect via the puller sidecar.
+     */
+    @PostMapping("/pull")
+    public ResponseEntity<String> triggerGarminPull() {
+        try {
+            var rest = org.springframework.web.client.RestClient.create();
+            String res = rest.post()
+                    .uri("http://garmin-puller:8081/pull")
+                    .retrieve()
+                    .body(String.class);
+            return ResponseEntity.ok(res);
+        } catch (Exception e) {
+            log.error("Failed to trigger on-demand Garmin pull: {}", e.getMessage());
+            return ResponseEntity.status(500).body("{\"status\":\"error\",\"message\":\"" + e.getMessage() + "\"}");
+        }
+    }
 }

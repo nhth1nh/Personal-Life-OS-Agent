@@ -52,14 +52,33 @@ public class HealthService {
         if (req.hrvRmssd() != null)     metric.setHrvRmssd(req.hrvRmssd());
         if (req.hrvWeeklyAvg() != null) metric.setHrvWeeklyAvg(req.hrvWeeklyAvg());
         if (req.rhr() != null)          metric.setRhr(req.rhr());
+        if (req.minHr() != null)        metric.setMinHr(req.minHr());
+        if (req.maxHr() != null)        metric.setMaxHr(req.maxHr());
         if (req.sleepTotalMin() != null) metric.setSleepTotalMin(req.sleepTotalMin());
         if (req.sleepDeepMin() != null) metric.setSleepDeepMin(req.sleepDeepMin());
         if (req.sleepRemMin() != null)  metric.setSleepRemMin(req.sleepRemMin());
         if (req.sleepLightMin() != null) metric.setSleepLightMin(req.sleepLightMin());
         if (req.sleepAwakeMin() != null) metric.setSleepAwakeMin(req.sleepAwakeMin());
+        if (req.sleepScore() != null)   metric.setSleepScore(req.sleepScore());
+        if (req.bodyBatteryCurrent() != null) metric.setBodyBatteryCurrent(req.bodyBatteryCurrent());
+        if (req.bodyBatteryHighest() != null) metric.setBodyBatteryHighest(req.bodyBatteryHighest());
+        if (req.bodyBatteryLowest() != null) metric.setBodyBatteryLowest(req.bodyBatteryLowest());
+        if (req.bodyBatteryCharged() != null) metric.setBodyBatteryCharged(req.bodyBatteryCharged());
+        if (req.bodyBatteryDrained() != null) metric.setBodyBatteryDrained(req.bodyBatteryDrained());
+        if (req.stressAvg() != null)    metric.setStressAvg(req.stressAvg());
+        if (req.stressMax() != null)    metric.setStressMax(req.stressMax());
+        if (req.stressQualifier() != null) metric.setStressQualifier(req.stressQualifier());
         if (req.steps() != null)        metric.setSteps(req.steps());
         if (req.activeKcal() != null)   metric.setActiveKcal(req.activeKcal());
+        if (req.totalKcal() != null)    metric.setTotalKcal(req.totalKcal());
+        if (req.activeTimeMin() != null) metric.setActiveTimeMin(req.activeTimeMin());
+        if (req.moderateMin() != null)  metric.setModerateMin(req.moderateMin());
+        if (req.vigorousMin() != null)  metric.setVigorousMin(req.vigorousMin());
+        if (req.distanceMeters() != null) metric.setDistanceMeters(req.distanceMeters());
+        if (req.spo2Avg() != null)      metric.setSpo2Avg(req.spo2Avg());
+        if (req.respirationAvg() != null) metric.setRespirationAvg(req.respirationAvg());
         if (req.weightKg() != null)     metric.setWeightKg(req.weightKg());
+        if (req.rawDataJsonb() != null) metric.setRawDataJsonb(req.rawDataJsonb());
 
         HealthMetric saved = repo.save(metric);
         log.info("Health metrics upserted for date: {}", saved.getDate());
@@ -79,5 +98,10 @@ public class HealthService {
     @Transactional(readOnly = true)
     public SleepResult computeSleepTrend() {
         return sleepEngine.compute();
+    }
+
+    @Transactional(readOnly = true)
+    public HealthMetric getMetricsForDate(LocalDate date) {
+        return repo.findById(date != null ? date : LocalDate.now()).orElse(null);
     }
 }

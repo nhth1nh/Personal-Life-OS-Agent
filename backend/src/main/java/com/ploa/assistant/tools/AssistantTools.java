@@ -7,6 +7,7 @@ import com.ploa.finance.service.FinanceService;
 import com.ploa.health.engine.dto.ReadinessResult;
 import com.ploa.health.engine.dto.SleepResult;
 import com.ploa.health.engine.dto.WeightEmaResult;
+import com.ploa.health.model.HealthMetric;
 import com.ploa.health.service.HealthService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -44,6 +45,14 @@ public class AssistantTools {
             String note,
             boolean confirmed
     ) {}
+
+    @Tool(description = "Get comprehensive real-time biometrics from Garmin: live Body Battery (0-100), current stress score, active calories, total calories, active time, intensity minutes, steps, distance, SpO2, and respiration.")
+    public HealthMetric getLiveGarminMetrics(
+            @ToolParam(description = "Target date in YYYY-MM-DD format (leave null or blank for today)", required = false) String date) {
+        LocalDate target = (date != null && !date.isBlank()) ? LocalDate.parse(date) : LocalDate.now();
+        log.info("Assistant tool call: getLiveGarminMetrics({})", target);
+        return healthService.getMetricsForDate(target);
+    }
 
     @Tool(description = "Get physical recovery & readiness metrics for a date (or today). Includes HRV, Resting Heart Rate, rolling 30-day baseline Z-scores, recovery level (PRIME, NORMAL, STRESSED, FATIGUED), and sleep debt.")
     public ReadinessResult getHealthReadiness(

@@ -249,6 +249,38 @@ public class TelegramBotHandler implements SpringLongPollingBot, LongPollingUpda
                 String briefing = briefingOrchestrator.generateBriefingPreview();
                 sendText(chatId, briefing);
             }
+            case "/sync" -> {
+                sendText(chatId, "⏳ *Pulling live data from Garmin Connect...*");
+                try {
+                    var rest = org.springframework.web.client.RestClient.create();
+                    rest.post().uri("http://garmin-puller:8081/pull").retrieve().toBodilessEntity();
+                    var m = healthService.getMetricsForDate(LocalDate.now());
+                    String syncMsg = """
+                            ✅ *Garmin Sync Complete!*
+                            • 🔋 Body Battery: %s/100
+                            • ⚡ Stress: %s/100 (%s)
+                            • 👟 Steps: %,d
+                            • 🔥 Active Kcal: %s kcal (Total: %s kcal)
+                            • ⏱️ Active Time: %s min
+                            • ❤️ Resting HR: %s bpm (Min: %s, Max: %s)
+                            """.formatted(
+                            m != null && m.getBodyBatteryCurrent() != null ? m.getBodyBatteryCurrent() : "N/A",
+                            m != null && m.getStressAvg() != null ? m.getStressAvg() : "N/A",
+                            m != null && m.getStressQualifier() != null ? m.getStressQualifier() : "N/A",
+                            m != null && m.getSteps() != null ? m.getSteps() : 0,
+                            m != null && m.getActiveKcal() != null ? m.getActiveKcal() : "N/A",
+                            m != null && m.getTotalKcal() != null ? m.getTotalKcal() : "N/A",
+                            m != null && m.getActiveTimeMin() != null ? m.getActiveTimeMin() : "N/A",
+                            m != null && m.getRhr() != null ? m.getRhr() : "N/A",
+                            m != null && m.getMinHr() != null ? m.getMinHr() : "N/A",
+                            m != null && m.getMaxHr() != null ? m.getMaxHr() : "N/A"
+                    );
+                    sendText(chatId, syncMsg);
+                } catch (Exception e) {
+                    log.error("Telegram /sync failed: {}", e.getMessage());
+                    sendText(chatId, "❌ Failed to sync from Garmin: " + e.getMessage());
+                }
+            }
             default -> sendText(chatId, "Unknown command. Try /help");
         }
     }

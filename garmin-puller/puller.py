@@ -1,16 +1,30 @@
 #!/usr/bin/env python3
 """
 Garmin Connect Puller Sidecar
-Pulls daily health metrics from Garmin Connect at a scheduled time
-and POSTs them to the PLOA backend /api/v1/health/sync endpoint.
+Pulls comprehensive daily & real-time health metrics from Garmin Connect:
+- Physical recovery (HRV rMSSD, RHR, Resting Heart Rate)
+- Real-time Body Battery (current, highest, lowest, charged, drained)
+- Stress scores (average, max, qualifier)
+- Sleep stages (deep, REM, light, awake, sleep score 0-100)
+- Heart rate limits (min HR, max HR)
+- Activity & Calories (steps, active kcal, total kcal, active minutes, moderate/vigorous minutes, distance)
+- Respiration & SpO2
+- Full raw JSON payload for AI exploration
+
+Schedules:
+- 06:30 daily: sync yesterday (finalize steps/calories) and today
+- Every 15 minutes: refresh today's real-time metrics (body battery, stress, steps, calories)
+- HTTP listener on :8081: enables on-demand /pull trigger from backend or user
 """
 
 import argparse
 import json
 import logging
 import os
+import threading
 import time
 from datetime import date, datetime, timedelta
+from http.server import BaseHTTPRequestHandler, HTTPServer
 
 import requests
 import schedule
@@ -55,29 +69,81 @@ def get_client() -> Garmin | None:
 
 
 def pull_and_sync(target_date: date | None = None) -> bool:
-    """Pull health data for target_date from Garmin and POST to backend."""
+    """Pull comprehensive health data for target_date from Garmin and POST to backend."""
     if target_date is None:
-        target_date = date.today() - timedelta(days=1)
+        target_date = date.today()
 
     date_str = target_date.isoformat()  # YYYY-MM-DD
-    log.info(f"Starting Garmin pull for date: {date_str}")
+    log.info(f"Starting comprehensive Garmin pull for date: {date_str}")
 
     client = get_client()
     if not client:
         return False
 
     payload: dict = {"date": date_str}
+    raw_data: dict = {}
 
-    # ── Sleep ────────────────────────────────────────────────────────────────
+    # ── User Summary (Steps, Calories, Stress, Body Battery, SpO2, Respiration, HR) ───
+    try:
+        user_summary = client.get_user_summary(date_str)
+        if user_summary:
+            raw_data["user_summary"] = user_summary
+
+            payload["activeKcal"] = user_summary.get("activeKilocalories")
+            payload["totalKcal"] = user_summary.get("totalKilocalories")
+            payload["steps"] = user_summary.get("totalSteps")
+            payload["distanceMeters"] = user_summary.get("totalDistanceMeters")
+
+            active_sec = user_summary.get("activeSeconds")
+            if active_sec is not None:
+                payload["activeTimeMin"] = int(active_sec) // 60
+
+            payload["moderateMin"] = user_summary.get("moderateIntensityMinutes")
+            payload["vigorousMin"] = user_summary.get("vigorousIntensityMinutes")
+
+            # Heart rates
+            payload["rhr"] = user_summary.get("restingHeartRate")
+            payload["minHr"] = user_summary.get("minHeartRate")
+            payload["maxHr"] = user_summary.get("maxHeartRate")
+
+            # Body Battery
+            payload["bodyBatteryCurrent"] = user_summary.get("bodyBatteryMostRecentValue")
+            payload["bodyBatteryHighest"] = user_summary.get("bodyBatteryHighestValue")
+            payload["bodyBatteryLowest"] = user_summary.get("bodyBatteryLowestValue")
+            payload["bodyBatteryCharged"] = user_summary.get("bodyBatteryChargedValue")
+            payload["bodyBatteryDrained"] = user_summary.get("bodyBatteryDrainedValue")
+
+            # Stress
+            payload["stressAvg"] = user_summary.get("averageStressLevel")
+            payload["stressMax"] = user_summary.get("maxStressLevel")
+            payload["stressQualifier"] = user_summary.get("stressQualifier")
+
+            # Respiration & SpO2
+            payload["spo2Avg"] = user_summary.get("averageSpo2")
+            payload["respirationAvg"] = user_summary.get("avgWakingRespirationValue")
+
+            log.info(f"User Summary parsed: Steps={payload.get('steps')}, ActiveKcal={payload.get('activeKcal')}, "
+                     f"BodyBattery={payload.get('bodyBatteryCurrent')}, StressAvg={payload.get('stressAvg')}")
+    except Exception as e:
+        log.warning(f"Failed to fetch user summary: {e}")
+
+    # ── Sleep Data ───────────────────────────────────────────────────────────
     try:
         sleep = client.get_sleep_data(date_str)
         daily = sleep.get("dailySleepDTO", {}) if sleep else {}
-        payload["sleepTotalMin"] = (daily.get("sleepTimeSeconds") or 0) // 60
-        payload["sleepDeepMin"] = (daily.get("deepSleepSeconds") or 0) // 60
-        payload["sleepRemMin"] = (daily.get("remSleepSeconds") or 0) // 60
-        payload["sleepLightMin"] = (daily.get("lightSleepSeconds") or 0) // 60
-        payload["sleepAwakeMin"] = (daily.get("awakeSleepSeconds") or 0) // 60
-        log.info(f"Sleep data: total={payload['sleepTotalMin']}min, deep={payload['sleepDeepMin']}min, rem={payload['sleepRemMin']}min")
+        if daily:
+            raw_data["sleep_dto"] = daily
+            payload["sleepTotalMin"] = (daily.get("sleepTimeSeconds") or 0) // 60
+            payload["sleepDeepMin"] = (daily.get("deepSleepSeconds") or 0) // 60
+            payload["sleepRemMin"] = (daily.get("remSleepSeconds") or 0) // 60
+            payload["sleepLightMin"] = (daily.get("lightSleepSeconds") or 0) // 60
+            payload["sleepAwakeMin"] = (daily.get("awakeSleepSeconds") or 0) // 60
+
+            sleep_scores = daily.get("sleepScores", {})
+            if isinstance(sleep_scores, dict) and "overall" in sleep_scores:
+                payload["sleepScore"] = sleep_scores.get("overall", {}).get("value")
+
+            log.info(f"Sleep data: total={payload['sleepTotalMin']}min, score={payload.get('sleepScore')}")
     except Exception as e:
         log.warning(f"Failed to fetch sleep data: {e}")
 
@@ -85,42 +151,27 @@ def pull_and_sync(target_date: date | None = None) -> bool:
     try:
         hrv = client.get_hrv_data(date_str)
         hrv_summary = hrv.get("hrvSummary", {}) if hrv else {}
-        payload["hrvRmssd"] = hrv_summary.get("lastNightAvg") or hrv_summary.get("lastNight")
-        payload["hrvWeeklyAvg"] = hrv_summary.get("weeklyAvg")
-        log.info(f"HRV data: rMSSD={payload.get('hrvRmssd')}, weeklyAvg={payload.get('hrvWeeklyAvg')}")
+        if hrv_summary:
+            raw_data["hrv_summary"] = hrv_summary
+            payload["hrvRmssd"] = hrv_summary.get("lastNightAvg") or hrv_summary.get("lastNight")
+            payload["hrvWeeklyAvg"] = hrv_summary.get("weeklyAvg")
+            log.info(f"HRV data: rMSSD={payload.get('hrvRmssd')}, weeklyAvg={payload.get('hrvWeeklyAvg')}")
     except Exception as e:
         log.warning(f"Failed to fetch HRV data: {e}")
 
-    # ── Resting Heart Rate ───────────────────────────────────────────────────
-    try:
-        rhr_data = client.get_rhr_day(date_str)
-        if rhr_data:
-            values = rhr_data.get("allMetrics", {}).get("metricsMap", {}).get("WELLNESS_RESTING_HEART_RATE", [])
-            if values:
-                payload["rhr"] = values[0].get("value")
-        log.info(f"RHR: {payload.get('rhr')} bpm")
-    except Exception as e:
-        log.warning(f"Failed to fetch RHR data: {e}")
+    # ── Resting Heart Rate (from rhr_day if missing from user summary) ───────
+    if payload.get("rhr") is None:
+        try:
+            rhr_data = client.get_rhr_day(date_str)
+            if rhr_data:
+                values = rhr_data.get("allMetrics", {}).get("metricsMap", {}).get("WELLNESS_RESTING_HEART_RATE", [])
+                if values:
+                    payload["rhr"] = values[0].get("value")
+            log.info(f"RHR fallback: {payload.get('rhr')} bpm")
+        except Exception as e:
+            log.warning(f"Failed to fetch RHR fallback data: {e}")
 
-    # ── Steps & Active Calories ──────────────────────────────────────────────
-    try:
-        steps_data = client.get_steps_data(date_str)
-        if steps_data and isinstance(steps_data, list):
-            total_steps = sum(s.get("steps", 0) for s in steps_data if isinstance(s, dict))
-            payload["steps"] = total_steps
-            log.info(f"Steps: {total_steps}")
-    except Exception as e:
-        log.warning(f"Failed to fetch steps data: {e}")
-
-    try:
-        user_summary = client.get_user_summary(date_str)
-        if user_summary:
-            payload["activeKcal"] = user_summary.get("activeKilocalories")
-            log.info(f"Active kcal: {payload.get('activeKcal')}")
-    except Exception as e:
-        log.warning(f"Failed to fetch user summary: {e}")
-
-    # ── Body Composition (Weight) ────────────────────────────────────
+    # ── Body Composition (Weight) ───────────────────────────────────────────
     try:
         body_comp = client.get_body_composition(date_str)
         if body_comp:
@@ -132,8 +183,12 @@ def pull_and_sync(target_date: date | None = None) -> bool:
     except Exception as e:
         log.warning(f"Failed to fetch body composition: {e}")
 
+    # Attach raw data JSON for extensive LLM exploration
+    if raw_data:
+        payload["rawDataJsonb"] = raw_data
+
     # ── POST to backend ──────────────────────────────────────────────────────
-    log.info(f"Syncing payload to backend: {json.dumps(payload, indent=2)}")
+    log.info(f"Syncing comprehensive payload to backend (fields: {list(payload.keys())})")
     try:
         response = requests.post(
             BACKEND_URL,
@@ -142,7 +197,7 @@ def pull_and_sync(target_date: date | None = None) -> bool:
             timeout=30,
         )
         response.raise_for_status()
-        log.info(f"Sync successful: {response.status_code} {response.text}")
+        log.info(f"Sync successful: {response.status_code}")
         return True
     except requests.RequestException as e:
         log.error(f"Backend sync failed: {e}")
@@ -150,7 +205,7 @@ def pull_and_sync(target_date: date | None = None) -> bool:
 
 
 def sync_daily():
-    """Sync yesterday (finalizes steps/kcal) and today (morning recovery & weight)."""
+    """Sync yesterday (finalizes steps/kcal) and today (morning recovery & real-time)."""
     today = date.today()
     yesterday = today - timedelta(days=1)
     log.info(f"Syncing yesterday ({yesterday}) to finalize metrics...")
@@ -159,9 +214,41 @@ def sync_daily():
     pull_and_sync(today)
 
 
-def job():
-    log.info("Scheduled pull triggered")
-    sync_daily()
+# ── HTTP Trigger Server (Port 8081) ───────────────────────────────────────────
+class PullHandler(BaseHTTPRequestHandler):
+    def do_POST(self):
+        self.handle_trigger()
+
+    def do_GET(self):
+        if self.path in ("/pull", "/sync", "/pull-now"):
+            self.handle_trigger()
+        else:
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.end_headers()
+            self.wfile.write(b'{"status":"ready"}')
+
+    def handle_trigger(self):
+        log.info("HTTP trigger received: initiating instant Garmin pull...")
+        success = pull_and_sync(date.today())
+        self.send_response(200 if success else 500)
+        self.send_header("Content-Type", "application/json")
+        self.end_headers()
+        res = {"status": "success" if success else "failed", "date": date.today().isoformat()}
+        self.wfile.write(json.dumps(res).encode("utf-8"))
+
+    def log_message(self, format, *args):
+        # Silence default HTTP server access logs
+        pass
+
+
+def start_http_server():
+    try:
+        server = HTTPServer(("0.0.0.0", 8081), PullHandler)
+        log.info("Garmin puller HTTP trigger server listening on :8081")
+        server.serve_forever()
+    except Exception as e:
+        log.error(f"HTTP server error: {e}")
 
 
 if __name__ == "__main__":
@@ -184,13 +271,22 @@ if __name__ == "__main__":
         log.info("One-off sync requested")
         sync_daily()
     else:
-        log.info(f"Garmin Puller daemon starting — scheduled at {GARMIN_PULL_TIME} daily")
-        schedule.every().day.at(GARMIN_PULL_TIME).do(job)
+        # Start background HTTP trigger server on :8081
+        threading.Thread(target=start_http_server, daemon=True).start()
 
-        # Initial pull on startup: sync both yesterday and today
-        log.info("Running initial pull on startup...")
+        log.info(f"Garmin Puller daemon starting:")
+        log.info(f" - Daily dual sync at {GARMIN_PULL_TIME}")
+        log.info(f" - Real-time sync every 15 minutes during the day")
+        log.info(f" - On-demand trigger available at http://garmin-puller:8081/pull")
+
+        schedule.every().day.at(GARMIN_PULL_TIME).do(sync_daily)
+        # Periodic 15-minute refresh for real-time body battery, stress, steps, and calories
+        schedule.every(15).minutes.do(lambda: pull_and_sync(date.today()))
+
+        # Initial pull on startup
+        log.info("Running initial comprehensive pull on startup...")
         sync_daily()
 
         while True:
             schedule.run_pending()
-            time.sleep(60)
+            time.sleep(30)

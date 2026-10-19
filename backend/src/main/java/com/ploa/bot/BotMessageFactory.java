@@ -144,6 +144,7 @@ public class BotMessageFactory {
                 /health — Today's HRV/RHR recovery + weight EMA
                 /finance — Month-to-date spending & burn rate
                 /briefing — Generate and send today's AI morning briefing
+                /sync — Pull latest live biometrics from Garmin Connect
                 /help — Show this message
                 
                 *Quick Expense:*
