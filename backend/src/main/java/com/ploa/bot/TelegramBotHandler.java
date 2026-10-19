@@ -1,0 +1,244 @@
+package com.ploa.bot;
+
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.ploa.ai.VisionOcrService;
+import com.ploa.ai.dto.OcrResult;
+import com.ploa.config.PloaProperties;
+import com.ploa.finance.model.SpendType;
+import com.ploa.finance.model.Transaction;
+import com.ploa.finance.service.FinanceService;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.stereotype.Component;
+import org.telegram.telegrambots.client.okhttp.OkHttpTelegramClient;
+import org.telegram.telegrambots.longpolling.interfaces.LongPollingUpdateConsumer;
+import org.telegram.telegrambots.longpolling.starter.SpringLongPollingBot;
+import org.telegram.telegrambots.meta.api.methods.GetFile;
+import org.telegram.telegrambots.meta.api.methods.send.SendMessage;
+import org.telegram.telegrambots.meta.api.methods.updatingmessages.EditMessageText;
+import org.telegram.telegrambots.meta.api.objects.File;
+import org.telegram.telegrambots.meta.api.objects.PhotoSize;
+import org.telegram.telegrambots.meta.api.objects.Update;
+import org.telegram.telegrambots.meta.api.objects.replykeyboard.InlineKeyboardMarkup;
+import org.telegram.telegrambots.meta.api.objects.replykeyboard.buttons.InlineKeyboardButton;
+import org.telegram.telegrambots.meta.api.objects.replykeyboard.buttons.InlineKeyboardRow;
+import org.telegram.telegrambots.meta.exceptions.TelegramApiException;
+import org.telegram.telegrambots.meta.generics.TelegramClient;
+
+import java.time.LocalDate;
+import java.util.Comparator;
+import java.util.List;
+import java.util.UUID;
+
+/**
+ * Telegram Long-Polling Bot Handler.
+ * Handles:
+ *  - Photo messages → Vision OCR → save draft transaction → inline keyboard
+ *  - Text messages → quick expense parsing or commands (/health, /finance)
+ *  - Callback queries → confirm, change category, delete
+ */
+@Component
+public class TelegramBotHandler implements SpringLongPollingBot, LongPollingUpdateConsumer {
+
+    private static final Logger log = LoggerFactory.getLogger(TelegramBotHandler.class);
+    private static final ObjectMapper MAPPER = new ObjectMapper().findAndRegisterModules();
+
+    private final TelegramClient telegramClient;
+    private final PloaProperties properties;
+    private final VisionOcrService ocrService;
+    private final FinanceService financeService;
+    private final BotMessageFactory messageFactory;
+
+    public TelegramBotHandler(PloaProperties properties,
+                               VisionOcrService ocrService,
+                               FinanceService financeService,
+                               BotMessageFactory messageFactory) {
+        this.properties = properties;
+        this.ocrService = ocrService;
+        this.financeService = financeService;
+        this.messageFactory = messageFactory;
+        String token = properties.telegram().botToken();
+        this.telegramClient = (token != null && !token.isBlank())
+                ? new OkHttpTelegramClient(token)
+                : null;
+    }
+
+    @Override
+    public String getBotToken() {
+        String token = properties.telegram().botToken();
+        return token != null ? token : "";
+    }
+
+    @Override
+    public LongPollingUpdateConsumer getUpdatesConsumer() {
+        return this;
+    }
+
+    @Override
+    public void consume(List<Update> updates) {
+        updates.forEach(this::processUpdate);
+    }
+
+    private void processUpdate(Update update) {
+        if (telegramClient == null) {
+            log.debug("Telegram client not configured; ignoring update");
+            return;
+        }
+        try {
+            if (update.hasMessage()) {
+                long chatId = update.getMessage().getChatId();
+                if (!isAllowed(chatId)) {
+                    log.warn("Rejected update from unauthorized chat_id: {}", chatId);
+                    return;
+                }
+                if (update.getMessage().hasPhoto()) {
+                    handlePhoto(update);
+                } else if (update.getMessage().hasText()) {
+                    handleText(update);
+                }
+            } else if (update.hasCallbackQuery()) {
+                handleCallback(update);
+            }
+        } catch (Exception e) {
+            log.error("Error processing update: {}", e.getMessage(), e);
+        }
+    }
+
+    // ── Photo handler ─────────────────────────────────────────────────────────
+
+    private void handlePhoto(Update update) throws TelegramApiException {
+        long chatId = update.getMessage().getChatId();
+        long msgId = update.getMessage().getMessageId();
+
+        sendText(chatId, "🔍 Analyzing receipt...");
+
+        // Get highest resolution photo
+        PhotoSize photo = update.getMessage().getPhoto().stream()
+                .max(Comparator.comparingInt(PhotoSize::getFileSize))
+                .orElseThrow();
+
+        // Download file URL
+        File file = telegramClient.execute(GetFile.builder().fileId(photo.getFileId()).build());
+        String fileUrl = "https://api.telegram.org/file/bot"
+                + properties.telegram().botToken() + "/" + file.getFilePath();
+
+        OcrResult ocr = ocrService.extractFromImage(fileUrl, "image/jpeg");
+        Transaction tx = buildTransaction(ocr, msgId);
+        Transaction saved = financeService.save(tx);
+
+        SendMessage msg = messageFactory.buildConfirmationMessage(chatId, saved, ocr);
+        telegramClient.execute(msg);
+    }
+
+    // ── Text handler ──────────────────────────────────────────────────────────
+
+    private void handleText(Update update) throws TelegramApiException {
+        long chatId = update.getMessage().getChatId();
+        String text = update.getMessage().getText().trim();
+
+        if (text.startsWith("/")) {
+            handleCommand(chatId, text);
+            return;
+        }
+
+        // Quick expense: "50k cafe"
+        sendText(chatId, "💬 Parsing expense...");
+        OcrResult ocr = ocrService.extractFromText(text);
+        Transaction tx = buildTransaction(ocr, null);
+        Transaction saved = financeService.save(tx);
+        SendMessage msg = messageFactory.buildConfirmationMessage(chatId, saved, ocr);
+        telegramClient.execute(msg);
+    }
+
+    // ── Command handler ───────────────────────────────────────────────────────
+
+    private void handleCommand(long chatId, String command) throws TelegramApiException {
+        switch (command.split("@")[0]) {
+            case "/start", "/help" -> sendText(chatId, messageFactory.helpText());
+            case "/health" -> sendText(chatId, "📊 /health command coming in Phase 3");
+            case "/finance" -> sendText(chatId, "💰 /finance command coming in Phase 3");
+            default -> sendText(chatId, "Unknown command. Try /help");
+        }
+    }
+
+    // ── Callback query handler ─────────────────────────────────────────────────
+
+    private void handleCallback(Update update) throws TelegramApiException {
+        var cb = update.getCallbackQuery();
+        long chatId = cb.getMessage().getChatId();
+        int msgId = cb.getMessage().getMessageId();
+        String data = cb.getData();
+
+        if (!isAllowed(chatId)) return;
+
+        String[] parts = data.split(":");
+        String action = parts[0];
+        UUID txId = UUID.fromString(parts[1]);
+
+        switch (action) {
+            case "CONFIRM" -> {
+                financeService.confirm(txId);
+                editText(chatId, msgId, "✅ Transaction confirmed!");
+            }
+            case "DELETE" -> {
+                financeService.delete(txId);
+                editText(chatId, msgId, "🗑️ Transaction deleted.");
+            }
+            case "TOGGLE_TYPE" -> {
+                String newCategory = parts.length > 2 ? parts[2] : "Other";
+                SpendType newType = SpendType.valueOf(parts.length > 3 ? parts[3] : "DISCRETIONARY");
+                Transaction updated = financeService.updateCategory(txId, newCategory, newType);
+                editText(chatId, msgId,
+                        "🔄 Updated: " + updated.getCategory() + " (" + updated.getSpendType() + ")");
+            }
+            default -> log.warn("Unknown callback action: {}", action);
+        }
+    }
+
+    // ── Helpers ───────────────────────────────────────────────────────────────
+
+    private Transaction buildTransaction(OcrResult ocr, Long telegramMsgId) {
+        Transaction tx = new Transaction();
+        tx.setTxDate(ocr.transactionDate() != null ? ocr.transactionDate() : LocalDate.now());
+        tx.setAmount(ocr.totalAmount() != null ? ocr.totalAmount() : 0L);
+        tx.setCurrency(ocr.currency() != null ? ocr.currency() : "VND");
+        tx.setCategory(ocr.category() != null ? ocr.category() : "Other");
+        tx.setSpendType("FIXED".equals(ocr.spendType()) ? SpendType.FIXED : SpendType.DISCRETIONARY);
+        tx.setMerchant(ocr.merchant());
+        tx.setNote(ocr.note());
+        tx.setDocumentType(ocr.documentType());
+        tx.setSourcePlatform(ocr.sourcePlatform());
+        tx.setTelegramMsgId(telegramMsgId);
+        tx.setConfirmed(false);
+        return tx;
+    }
+
+    private boolean isAllowed(long chatId) {
+        List<Long> allowed = properties.telegram().allowedChatIdList();
+        return allowed.isEmpty() || allowed.contains(chatId);
+    }
+
+    private void sendText(long chatId, String text) throws TelegramApiException {
+        if (telegramClient == null) {
+            log.warn("TelegramClient not initialized, cannot send text");
+            return;
+        }
+        telegramClient.execute(SendMessage.builder()
+                .chatId(chatId)
+                .text(text)
+                .parseMode("Markdown")
+                .build());
+    }
+
+    private void editText(long chatId, int msgId, String text) throws TelegramApiException {
+        if (telegramClient == null) {
+            log.warn("TelegramClient not initialized, cannot edit text");
+            return;
+        }
+        telegramClient.execute(EditMessageText.builder()
+                .chatId(chatId)
+                .messageId(msgId)
+                .text(text)
+                .build());
+    }
+}

@@ -1,0 +1,70 @@
+services:
+
+  postgres:
+    image: postgres:16-alpine
+    container_name: ploa-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-ploa}
+      POSTGRES_USER: ${POSTGRES_USER:-ploa}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-changeme}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-ploa} -d ${POSTGRES_DB:-ploa}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: ploa-backend
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/${POSTGRES_DB:-ploa}
+      SPRING_DATASOURCE_USERNAME: ${POSTGRES_USER:-ploa}
+      SPRING_DATASOURCE_PASSWORD: ${POSTGRES_PASSWORD:-changeme}
+      API_SECRET_KEY: ${API_SECRET_KEY:-changeme-strong-secret}
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN}
+      TELEGRAM_BOT_USERNAME: ${TELEGRAM_BOT_USERNAME}
+      TELEGRAM_ALLOWED_CHAT_IDS: ${TELEGRAM_ALLOWED_CHAT_IDS}
+      GOOGLE_AI_API_KEY: ${GOOGLE_AI_API_KEY}
+      GEMINI_MODEL: ${GEMINI_MODEL:-gemini-1.5-flash}
+      OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
+      OLLAMA_VISION_MODEL: ${OLLAMA_VISION_MODEL:-qwen2.5vl:7b}
+      OLLAMA_TEXT_MODEL: ${OLLAMA_TEXT_MODEL:-llama3.2}
+      TARGET_WEIGHT_KG: ${TARGET_WEIGHT_KG:-68.0}
+      BASELINE_WINDOW_DAYS: ${BASELINE_WINDOW_DAYS:-30}
+      SLEEP_TARGET_HOURS: ${SLEEP_TARGET_HOURS:-7.5}
+      MONTHLY_BUDGET_VND: ${MONTHLY_BUDGET_VND:-10000000}
+      SPRING_PROFILES_ACTIVE: ${SPRING_PROFILES_ACTIVE:-cloud}
+    ports:
+      - "8080:8080"
+    volumes:
+      - backend_logs:/app/logs
+
+  garmin-puller:
+    build:
+      context: ./garmin-puller
+      dockerfile: Dockerfile
+    container_name: ploa-garmin-puller
+    restart: unless-stopped
+    depends_on:
+      - backend
+    environment:
+      GARMIN_EMAIL: ${GARMIN_EMAIL}
+      GARMIN_PASSWORD: ${GARMIN_PASSWORD}
+      GARMIN_PULL_TIME: ${GARMIN_PULL_TIME:-06:30}
+      BACKEND_HEALTH_SYNC_URL: ${BACKEND_HEALTH_SYNC_URL:-http://backend:8080/api/v1/health/sync}
+      API_SECRET_KEY: ${API_SECRET_KEY:-changeme-strong-secret}
+
+volumes:
+  postgres_data:
+  backend_logs:

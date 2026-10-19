@@ -1,0 +1,17 @@
+# Local profile: uses Ollama on workstation (RTX 5070 Ti)
+spring:
+  ai:
+    openai:
+      enabled: false
+    ollama:
+      base-url: ${OLLAMA_BASE_URL:http://localhost:11434}
+      chat:
+        options:
+          model: ${OLLAMA_TEXT_MODEL:llama3.2}
+          temperature: 0.2
+
+ploa:
+  ai:
+    provider: ollama
+    vision-model: ${OLLAMA_VISION_MODEL:qwen2.5vl:7b}
+    text-model: ${OLLAMA_TEXT_MODEL:llama3.2}
