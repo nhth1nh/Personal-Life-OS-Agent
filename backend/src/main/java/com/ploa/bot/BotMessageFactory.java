@@ -152,7 +152,8 @@ public class BotMessageFactory {
                 *Commands:*
                 /health — Today's HRV/RHR recovery + weight EMA
                 /finance — Month-to-date spending & burn rate
-                /briefing — Generate and send today's AI morning briefing
+                /briefing — Generate and send today's AI morning briefing (07:30)
+                /evening — Generate and send today's AI evening summary (21:30)
                 /sync — Pull latest live biometrics from Garmin Connect
                 /new — Clear chat memory & start a fresh conversation
                 /help — Show this message

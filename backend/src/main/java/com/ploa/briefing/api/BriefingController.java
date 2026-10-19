@@ -33,4 +33,22 @@ public class BriefingController {
         orchestrator.sendMorningBriefing();
         return ResponseEntity.ok(Map.of("status", "sent"));
     }
+
+    /**
+     * Preview today's AI evening summary text without sending it to Telegram.
+     */
+    @GetMapping("/evening/preview")
+    public ResponseEntity<Map<String, String>> previewEvening() {
+        String summary = orchestrator.generateEveningSummaryPreview();
+        return ResponseEntity.ok(Map.of("summary", summary));
+    }
+
+    /**
+     * Manually trigger evening summary synthesis and push to Telegram.
+     */
+    @PostMapping("/evening/trigger")
+    public ResponseEntity<Map<String, String>> triggerEvening() {
+        orchestrator.sendEveningSummary();
+        return ResponseEntity.ok(Map.of("status", "sent"));
+    }
 }

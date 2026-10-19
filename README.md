@@ -90,7 +90,9 @@ flowchart TD
 - **Automatic Intent Classification**:
   - Expense inputs (`50k coffee`, `120k groceries`) $\rightarrow$ routed to the structured expense logger.
   - General questions or conversation $\rightarrow$ routed to the AI Assistant, which answers based on your actual deterministic numbers.
-- **Daily Morning Briefing (07:30 AM)**: Synthesizes physical readiness, sleep debt, body composition trend, and financial pacing into a motivating, 200-word executive briefing pushed directly to Telegram.
+- **Daily Executive Briefings & Summaries**:
+  - **Morning Briefing (07:30 AM)**: Synthesizes physical readiness, sleep debt, body composition trend, and financial pacing into a motivating, 200-word executive briefing pushed directly to Telegram.
+  - **Evening Summary (09:30 PM / 21:30)**: Complete end-of-day recap synthesizing completed steps, active/total caloric burn, body battery drain, stress dynamics, day's expenses, and actionable wind-down/sleep recommendations.
 
 ---
 
@@ -237,11 +239,13 @@ All protected endpoints accept authentication through any of the following metho
 | **DELETE** | `/api/v1/memory/{id}` | Delete a stored user memory by UUID. | *(None)* |
 | **DELETE** | `/api/v1/memory/history` | Clear conversation history for a given session/chat ID. | `?chatId=session-1` |
 
-### 4. Morning Briefing
+### 4. Daily Briefings & Summaries
 | Method | Endpoint | Description | Query / Body |
 |---|---|---|---|
-| **GET** | `/api/v1/briefing/preview` | Preview today's AI-generated morning briefing text. | *(None)* |
+| **GET** | `/api/v1/briefing/preview` | Preview today's AI-generated morning briefing text (07:30). | *(None)* |
 | **POST** | `/api/v1/briefing/trigger` | Manually generate and deliver the morning briefing to Telegram. | *(None)* |
+| **GET** | `/api/v1/briefing/evening/preview` | Preview today's AI-generated evening summary text (21:30). | *(None)* |
+| **POST** | `/api/v1/briefing/evening/trigger` | Manually generate and deliver the evening summary to Telegram. | *(None)* |
 
 ### 5. Observability
 | Method | Endpoint | Description |
@@ -259,7 +263,8 @@ All protected endpoints accept authentication through any of the following metho
 | `/health` | View today's readiness level (`PRIME`/`NORMAL`/`STRESSED`), HRV/RHR Z-score, sleep debt, and 7-day weight EMA. |
 | `/sync` | Trigger instant Garmin biometric sync and display live Body Battery, Stress, Steps, Calories, and HR extremes. |
 | `/finance` | View month-to-date spending pace, remaining budget, and safe daily allowance. |
-| `/briefing` | On-demand trigger to generate and deliver the morning briefing to your chat. |
+| `/briefing` | On-demand trigger to generate and deliver the morning briefing to your chat (07:30). |
+| `/evening` | On-demand trigger to generate and deliver the complete daily evening summary (21:30). |
 | `/new` | Clear short-term chat memory to start a fresh conversation session. |
 | `/help` | Display command cheat-sheet and quick-start instructions. |
 | **Photo / Receipt** | Automatically triggers Vision OCR entity extraction and draft creation. |

@@ -41,7 +41,11 @@ public record PloaProperties(
         }
     }
 
-    public record Briefing(String cron) {}
+    public record Briefing(
+            String cron,
+            @DefaultValue("0 30 7 * * *") String morningCron,
+            @DefaultValue("0 30 21 * * *") String eveningCron
+    ) {}
 
     public record Ai(String provider, String visionModel, String textModel) {}
 }

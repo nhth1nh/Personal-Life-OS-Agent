@@ -39,7 +39,8 @@ flowchart TD
 | `/health` | Retrieves today's readiness, HRV/RHR Z-scores, sleep debt, and 7-day weight EMA. | Structured Health & Readiness card. |
 | `/sync` | Triggers immediate on-demand pull from `http://garmin-puller:8081/pull`. | Live Body Battery, Stress, Steps, Active vs Total Calories, Active Time, and HR extremes. |
 | `/finance` | Retrieves MTD spend, fixed vs discretionary split, daily burn rate, and safe daily allowance. | Financial pacing summary. |
-| `/briefing` | On-demand trigger for the AI morning briefing synthesizer. | Executive daily briefing text. |
+| `/briefing` | On-demand trigger for the AI morning briefing synthesizer (07:30). | Executive daily briefing text. |
+| `/evening` | On-demand trigger for the AI evening summary synthesizer (21:30). | Executive end-of-day recap text. |
 | `/new` | Resets the short-term conversation memory (`chat_messages`), starting a fresh chat session without erasing long-term profile preferences. | Confirmation message. |
 | `/help` | Displays command cheat-sheet and usage tips. | Help manual. |
 

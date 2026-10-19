@@ -70,4 +70,16 @@ public class FinanceService {
         List<Transaction> list = repo.findByTxDateBetweenOrderByTxDateDesc(startOfMonth, today);
         return list.size() > limit ? list.subList(0, limit) : list;
     }
+
+    @Transactional(readOnly = true)
+    public List<Transaction> getTransactionsForDate(LocalDate date) {
+        LocalDate target = date != null ? date : LocalDate.now();
+        return repo.findByTxDateBetweenOrderByTxDateDesc(target, target);
+    }
+
+    @Transactional(readOnly = true)
+    public Long getSpentForDate(LocalDate date) {
+        LocalDate target = date != null ? date : LocalDate.now();
+        return repo.sumConfirmedAmountBetween(target, target);
+    }
 }

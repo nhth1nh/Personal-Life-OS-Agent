@@ -249,9 +249,14 @@ public class TelegramBotHandler implements SpringLongPollingBot, LongPollingUpda
                 sendText(chatId, messageFactory.buildFinanceSummary(burnRate));
             }
             case "/briefing" -> {
-                sendText(chatId, "⏳ *Synthesizing daily briefing with AI...*");
+                sendText(chatId, "⏳ *Synthesizing daily morning briefing with AI...*");
                 String briefing = briefingOrchestrator.generateBriefingPreview();
                 sendText(chatId, briefing);
+            }
+            case "/evening", "/recap" -> {
+                sendText(chatId, "⏳ *Synthesizing daily evening summary with AI...*");
+                String evening = briefingOrchestrator.generateEveningSummaryPreview();
+                sendText(chatId, evening);
             }
             case "/sync" -> {
                 sendText(chatId, "⏳ *Pulling live data from Garmin Connect...*");
