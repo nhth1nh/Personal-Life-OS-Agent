@@ -232,7 +232,7 @@ All protected endpoints accept authentication through any of the following metho
 ### 3. AI Assistant & Memory
 | Method | Endpoint | Description | Query / Body |
 |---|---|---|---|
-| **POST** | `/api/v1/chat` | Conversational query with multi-turn session tracking & selective tools. | `{"message": "Hôm qua tao chạy mấy km?", "chatId": "session-1"}` |
+| **POST** | `/api/v1/chat` | Conversational query with multi-turn session tracking & selective tools. | `{"message": "How many km did I run yesterday?", "chatId": "session-1"}` |
 | **GET** | `/api/v1/chat` | Browser-accessible chat query. | `?q=how+is+my+recovery&chatId=browser-1` |
 | **GET** | `/api/v1/memory` | List all stored long-term user preferences & goals. | `?category=FITNESS` (optional) |
 | **POST** | `/api/v1/memory` | Save or update a persistent user habit/goal/preference. | `{"category": "FITNESS", "key": "goal", "value": "21km"}` |

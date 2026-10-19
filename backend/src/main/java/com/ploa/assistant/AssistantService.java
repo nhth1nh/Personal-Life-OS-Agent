@@ -102,11 +102,11 @@ public class AssistantService {
                 - "saveUserMemory": User reveals a persistent habit, diet, running/fitness goal, or preference to store in long-term memory.
                 
                 RULES:
-                1. If the message is a greeting, casual banter, general opinion, or general advice ("hello", "chào mày", "tư vấn cách ngủ ngon"), return NO tools.
-                2. If the user asks about "hôm qua" or "yesterday", set date="yesterday".
-                3. If the user asks about "hôm nay" or "today", set date="today".
+                1. If the message is a greeting, casual banter, general opinion, or general advice ("hello", "how are you", "tips for good sleep"), return NO tools.
+                2. If the user asks about the previous day ("yesterday", "last night"), set date="yesterday".
+                3. If the user asks about the current day ("today", "now"), set date="today".
                 4. Only select tools strictly relevant to the question (do NOT select finance for health queries, or vice-versa).
-                5. If user states a permanent goal or habit (e.g. "tao đang ăn chay", "mục tiêu marathon tháng 12"), include "saveUserMemory" with category, key, value.
+                5. If user states a permanent goal or habit (e.g. "I am vegetarian", "marathon goal in December"), include "saveUserMemory" with category, key, value.
                 
                 OUTPUT FORMAT: Strict JSON only:
                 {
@@ -222,7 +222,7 @@ public class AssistantService {
                 5. If no empirical data was needed (e.g. casual chitchat, greetings, conceptual advice), answer warmly and concisely.
                 6. MATCH THE USER'S LANGUAGE AND TONE:
                    - If asked in Vietnamese, respond in natural Vietnamese.
-                   - If the user uses casual/informal pronouns (e.g. "tao/mày"), match their casual, candid vibe naturally.
+                   - If the user uses casual or informal tone, match their casual, candid vibe naturally.
                    - If asked in English, reply in English.
                 7. Format cleanly using standard Markdown (*bold*, lists, emojis). Avoid unclosed formatting markers.
                 """);
@@ -233,21 +233,24 @@ public class AssistantService {
     private ToolPlan heuristicFallbackPlan(String text) {
         String t = text.toLowerCase();
         List<String> tools = new ArrayList<>();
-        String date = t.contains("hôm qua") || t.contains("yesterday") ? "yesterday" : "today";
+        String date = t.contains("yesterday") || t.contains("last night") ? "yesterday" : "today";
 
-        if (t.contains("chạy") || t.contains("bước") || t.contains("calo") || t.contains("step") || t.contains("kcal") || t.contains("activity") || t.contains("vận động") || t.contains("pin") || t.contains("battery") || t.contains("stress")) {
+        if (t.contains("run") || t.contains("walk") || t.contains("step") || t.contains("calorie") || t.contains("kcal")
+                || t.contains("activity") || t.contains("battery") || t.contains("stress") || t.contains("heart")) {
             tools.add("getDailyHealth");
         }
-        if (t.contains("ngủ") || t.contains("sleep")) {
+        if (t.contains("sleep")) {
             tools.add("getSleepAnalysis");
         }
-        if (t.contains("tập") || t.contains("phục hồi") || t.contains("ready") || t.contains("readiness") || t.contains("workout") || t.contains("mệt")) {
+        if (t.contains("recovery") || t.contains("ready") || t.contains("readiness") || t.contains("workout")
+                || t.contains("train") || t.contains("fatigue") || t.contains("tired")) {
             tools.add("getHealthReadiness");
         }
-        if (t.contains("tiền") || t.contains("chi") || t.contains("budget") || t.contains("spend") || t.contains("burn") || t.contains("allowance")) {
+        if (t.contains("money") || t.contains("spend") || t.contains("budget") || t.contains("burn")
+                || t.contains("allowance") || t.contains("expense") || t.contains("cost")) {
             tools.add("getFinancialStatus");
         }
-        if (t.contains("cân") || t.contains("weight") || t.contains("kg")) {
+        if (t.contains("weight") || t.contains("scale") || t.contains("kg") || t.contains("lbs")) {
             tools.add("getWeightTrend");
         }
 

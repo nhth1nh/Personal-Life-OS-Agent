@@ -10,7 +10,7 @@ Rather than blindly stuffing a monolithic JSON of all biometrics, transactions, 
 
 ```mermaid
 flowchart TD
-    User["User Query\n('Hôm qua tao chạy mấy km?', 'Tao ăn chay nhé')"] --> Assistant["AssistantService.chat(chatId, text)"]
+    User["User Query\n('How many km did I run yesterday?', 'I am vegetarian')"] --> Assistant["AssistantService.chat(chatId, text)"]
     
     subgraph Storage["1. Persistence & Memory (PostgreSQL)"]
         CM[("chat_messages\n(Multi-Turn Conversation History)")]
@@ -58,13 +58,13 @@ Every tool follows the **Single Responsibility Principle (SRP)**. Tools return d
 ## 🛡️ Prompt Hardening: Preventing Tool Abuse
 
 To prevent hallucinations, over-fetching, and redundant calls, the Planner executes under strict system constraints:
-1. **Zero-Tool Invocations**: Casual banter, greetings, opinions, or general knowledge (`"Hello"`, `"Chào mày"`, `"Tư vấn cho tao cách ngủ ngon"`) execute with **zero tool calls** (`tools: []`).
+1. **Zero-Tool Invocations**: Casual banter, greetings, opinions, or general knowledge (`"Hello"`, `"How are you"`, `"Tips for good sleep"`) execute with **zero tool calls** (`tools: []`).
 2. **Deterministic Date Resolution**:
-   - Inquiries about *"hôm qua"* or *"yesterday"* resolve to `date: "yesterday"`, retrieving finalized past-day metrics.
+   - Inquiries about past activity (*"yesterday"*, *"last night"*) resolve to `date: "yesterday"`, retrieving finalized past-day metrics.
    - Inquiries about current progress resolve to `date: "today"`.
    - Inquiries referencing calendar dates resolve to `YYYY-MM-DD`.
 3. **Cross-Domain Separation**: Financial questions never query health tools; workout questions never query financial ledgers.
-4. **Persistent Memory Gate**: `saveUserMemory` is called **only** when the user reveals a lasting habit or preference (e.g. *"Tao mới chuyển sang ăn chay"*, *"Mục tiêu tháng 12 chạy 21km"*), not transient feelings.
+4. **Persistent Memory Gate**: `saveUserMemory` is called **only** when the user reveals a lasting habit or preference (e.g. *"I recently became vegetarian"*, *"Target 21km half-marathon in December"*), not transient feelings.
 
 ---
 
@@ -74,8 +74,8 @@ To prevent hallucinations, over-fetching, and redundant calls, the Planner execu
 - Table: `chat_messages` (`chat_id`, `role`, `content`, `created_at`).
 - Provides a sliding window of the last 8 conversation turns.
 - Enables natural follow-up dialogue:
-  - User: *"Hôm qua tao đi được bao nhiêu bước?"* $\rightarrow$ Model answers for yesterday (4,363 steps).
-  - User: *"Thế còn hôm nay thì sao?"* $\rightarrow$ Model understands context and answers for today.
+  - User: *"How many steps did I take yesterday?"* $\rightarrow$ Model answers for yesterday (4,363 steps).
+  - User: *"What about today?"* $\rightarrow$ Model understands context and answers for today.
 
 ### 2. Long-Term Personalization Memory
 - Table: `user_memories` (`category`, `memory_key`, `memory_value`, `source`, `created_at`, `updated_at`).

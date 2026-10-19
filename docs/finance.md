@@ -69,7 +69,7 @@ The financial engine guarantees mathematical integrity without generative halluc
 
 ## 🎮 Interactive Telegram Workflow
 
-1. **Capture**: Sending a photo of a receipt or typing `50k cà phê` triggers instant extraction and generates a draft transaction.
+1. **Capture**: Sending a photo of a receipt or typing `50k coffee` triggers instant extraction and generates a draft transaction.
 2. **Review Keyboard**:
    - `[✅ Confirm]`: Sets `confirmed = true`. The transaction is immediately included in the burn rate engine.
    - `[🔄 Toggle Type]`: Toggles spend type between `DISCRETIONARY` and `FIXED` in place.

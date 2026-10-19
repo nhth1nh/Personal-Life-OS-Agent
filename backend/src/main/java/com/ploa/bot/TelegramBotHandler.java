@@ -236,7 +236,7 @@ public class TelegramBotHandler implements SpringLongPollingBot, LongPollingUpda
             case "/start", "/help" -> sendText(chatId, messageFactory.helpText());
             case "/new", "/reset" -> {
                 assistantService.clearChatHistory(String.valueOf(chatId));
-                sendText(chatId, "🧹 *Cuộc trò chuyện đã được làm mới!* Bắt đầu một phiên hội thoại mới (các mục tiêu và sở thích cá nhân dài hạn vẫn được lưu giữ nguyên vẹn).");
+                sendText(chatId, "🧹 *Conversation reset!* Started a fresh chat session (long-term goals and profile preferences remain preserved).");
             }
             case "/health" -> {
                 LocalDate today = LocalDate.now();

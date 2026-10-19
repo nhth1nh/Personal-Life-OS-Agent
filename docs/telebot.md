@@ -13,7 +13,7 @@ flowchart TD
 
     Guard --> Router{"Update Classifier"}
     Router -->|Text starts with '/'| Commands["Command Handler\n(/health, /sync, /finance, /briefing, /help)"]
-    Router -->|Text with expense intent| QuickExpense["Text Expense Parser\n('50k cà phê')"]
+    Router -->|Text with expense intent| QuickExpense["Text Expense Parser\n('50k coffee')"]
     Router -->|Photo or Image Document| VisionOCR["Vision OCR Service\n(Receipt Extraction)"]
     Router -->|Conversational Question| AI["AssistantService\n(Context-Grounded Chat)"]
     Router -->|Callback Query| Callback["Inline Keyboard Handler\n(CONFIRM, TOGGLE_TYPE, DELETE)"]
@@ -55,7 +55,7 @@ Whenever a photo or quick expense is captured, the bot responds with an interact
 🏷️ Category: Food & Dining (DISCRETIONARY)
 🏪 Merchant: Highlands Coffee
 📅 Date: 2026-10-19
-📝 Note: Cà phê sữa đá size L
+📝 Note: Iced milk coffee size L
 
 [✅ Confirm]  [🔄 Toggle Type]  [🗑️ Delete]
 ```

@@ -22,7 +22,7 @@ flowchart LR
 
 1. **Telegram Photo Upload**: Compressed image uploaded from mobile/desktop photo gallery.
 2. **Telegram Document Photo**: Uncompressed image file sent as an attachment.
-3. **Natural Text Description**: Quick text notes like `50k cà phê highland`, `120k siêu thị winmart`, `200k tiền điện`.
+3. **Natural Text Description**: Quick text notes like `50k coffee highlands`, `120k groceries winmart`, `200k electricity bill`.
 4. **Multipart REST API (`POST /api/v1/finance/ocr`)**: Direct file upload from curl, Postman, or external automations.
 
 ---
@@ -39,11 +39,11 @@ The Vision model strictly adheres to the following structured entity schema:
   "category": "Food & Dining",
   "spendType": "DISCRETIONARY",
   "txDate": "2026-10-19",
-  "note": "Cà phê sữa đá size L",
+  "note": "Iced milk coffee size L",
   "confidence": 0.95,
   "lineItems": [
     {
-      "item": "Phin Sữa Đá Cỡ Lớn",
+      "item": "Large Iced Milk Coffee",
       "quantity": 1,
       "unitPrice": 55000,
       "totalPrice": 55000

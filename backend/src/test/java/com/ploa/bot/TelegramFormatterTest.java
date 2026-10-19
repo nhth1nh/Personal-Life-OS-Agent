@@ -8,9 +8,9 @@ class TelegramFormatterTest {
 
     @Test
     void testBoldAndItalicConversion() {
-        String input = "Active calories của mày đang ở mức **132 kcal** (tổng: **1,356 kcal**).";
+        String input = "Your active calories today stand at **132 kcal** (total: **1,356 kcal**).";
         String html = TelegramFormatter.markdownToHtml(input);
-        assertEquals("Active calories của mày đang ở mức <b>132 kcal</b> (tổng: <b>1,356 kcal</b>).", html);
+        assertEquals("Your active calories today stand at <b>132 kcal</b> (total: <b>1,356 kcal</b>).", html);
     }
 
     @Test
