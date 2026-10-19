@@ -350,14 +350,15 @@ public class TelegramBotHandler implements SpringLongPollingBot, LongPollingUpda
             log.warn("TelegramClient not initialized, cannot send text");
             return;
         }
+        String html = TelegramFormatter.markdownToHtml(text);
         try {
             telegramClient.execute(SendMessage.builder()
                     .chatId(chatId)
-                    .text(text)
-                    .parseMode("Markdown")
+                    .text(html)
+                    .parseMode("HTML")
                     .build());
         } catch (TelegramApiException e) {
-            log.warn("Markdown send failed ({}), retrying without parse mode", e.getMessage());
+            log.debug("HTML send failed ({}), retrying without parse mode", e.getMessage());
             telegramClient.execute(SendMessage.builder()
                     .chatId(chatId)
                     .text(text)
@@ -370,10 +371,21 @@ public class TelegramBotHandler implements SpringLongPollingBot, LongPollingUpda
             log.warn("TelegramClient not initialized, cannot edit text");
             return;
         }
-        telegramClient.execute(EditMessageText.builder()
-                .chatId(chatId)
-                .messageId(msgId)
-                .text(text)
-                .build());
+        String html = TelegramFormatter.markdownToHtml(text);
+        try {
+            telegramClient.execute(EditMessageText.builder()
+                    .chatId(chatId)
+                    .messageId(msgId)
+                    .text(html)
+                    .parseMode("HTML")
+                    .build());
+        } catch (TelegramApiException e) {
+            log.debug("HTML edit failed ({}), retrying without parse mode", e.getMessage());
+            telegramClient.execute(EditMessageText.builder()
+                    .chatId(chatId)
+                    .messageId(msgId)
+                    .text(text)
+                    .build());
+        }
     }
 }

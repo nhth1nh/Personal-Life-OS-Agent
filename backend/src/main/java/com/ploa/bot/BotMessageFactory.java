@@ -18,23 +18,27 @@ public class BotMessageFactory {
     private static final NumberFormat VND_FORMAT = NumberFormat.getInstance(new Locale("vi", "VN"));
 
     public SendMessage buildConfirmationMessage(long chatId, Transaction tx, OcrResult ocr) {
+        String merchant = escapeHtml(tx.getMerchant() != null ? tx.getMerchant() : "—");
+        String category = escapeHtml(tx.getCategory() != null ? tx.getCategory() : "Other");
+        String note = escapeHtml(tx.getNote() != null ? tx.getNote() : "—");
+
         String text = """
-                📋 *Transaction Captured*
+                📋 <b>Transaction Captured</b>
                 
-                💰 Amount: *%s VND*
-                🏷️ Category: *%s* (%s)
+                💰 Amount: <b>%s VND</b>
+                🏷️ Category: <b>%s</b> (%s)
                 🏪 Merchant: %s
                 📅 Date: %s
                 📝 Note: %s
                 
-                _Please confirm or correct:_
+                <i>Please confirm or correct:</i>
                 """.formatted(
                 VND_FORMAT.format(tx.getAmount()),
-                tx.getCategory(),
+                category,
                 tx.getSpendType(),
-                tx.getMerchant() != null ? tx.getMerchant() : "—",
+                merchant,
                 tx.getTxDate(),
-                tx.getNote() != null ? tx.getNote() : "—"
+                note
         );
 
         String txId = tx.getId().toString();
@@ -59,9 +63,14 @@ public class BotMessageFactory {
         return SendMessage.builder()
                 .chatId(chatId)
                 .text(text)
-                .parseMode("Markdown")
+                .parseMode("HTML")
                 .replyMarkup(keyboard)
                 .build();
+    }
+
+    private String escapeHtml(String text) {
+        if (text == null) return "";
+        return text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;");
     }
 
     public String buildHealthSummary(com.ploa.health.engine.dto.ReadinessResult r,

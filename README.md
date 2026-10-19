@@ -53,7 +53,14 @@ flowchart TD
 
 ---
 
-## 🌟 Key Features
+## 🌟 Key Features & Documentation
+
+> Detailed architecture, formula, and implementation guides are available in the [`docs/`](docs/) directory:
+> - [🏥 Health & Biometrics Tracking](docs/health.md)
+> - [💰 Personal Finance Ledger & Burn Rate](docs/finance.md)
+> - [🤖 Life OS AI Assistant](docs/assistance.md)
+> - [👁️ Vision OCR & Multimodal Ingestion](docs/ai-ocr.md)
+> - [📱 Telegram Bot Gateway](docs/telebot.md)
 
 ### 1. 🏥 Passive Physical Health & Recovery Tracking
 - **Automated Garmin Ingestion**: The `ploa-garmin-puller` sidecar connects to Garmin Connect using persistent session tokens (preventing rate limits).
