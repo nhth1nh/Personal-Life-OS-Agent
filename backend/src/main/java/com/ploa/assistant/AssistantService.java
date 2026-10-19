@@ -8,11 +8,14 @@ import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDate;
+import java.util.LinkedHashMap;
+import java.util.Map;
 
 /**
  * Conversational Life OS Assistant.
- * Dynamically queries deterministic health and finance engines via AssistantTools on demand,
- * allowing the AI to answer user questions freely, naturally, and contextually.
+ * Gathers authoritative real-time metrics across all domains via AssistantTools,
+ * providing the AI with complete grounding while letting it answer freely,
+ * conversationally, and naturally in any language (English, Vietnamese, etc.).
  */
 @Service
 public class AssistantService {
@@ -33,33 +36,33 @@ public class AssistantService {
         log.info("Assistant chat query received: {}", userMessage);
         LocalDate today = LocalDate.now();
 
-        // 1. Dynamically gather relevant data from engines using tools
-        String toolContext = gatherRelevantToolData(userMessage);
+        // 1. Gather all current authoritative metrics across domains
+        String dataJson = buildCurrentDataJson();
 
-        // 2. Build prompt giving the assistant full freedom in its response style
-        String dataSection = toolContext.isEmpty()
-                ? "No specific personal metrics were required for this query."
-                : """
-                  === AUTHORITATIVE REAL-TIME DATA RETRIEVED FROM ENGINES ===
-                  %s
-                  ===========================================================
-                  """.formatted(toolContext);
-
+        // 2. Build prompt giving the model complete freedom in response structure
         String systemPrompt = """
-                You are the Personal Life OS Agent (PLOA), a private, intelligent life companion for physical health, recovery, fitness, and personal finance.
+                You are the Personal Life OS Agent (PLOA), a private, highly intelligent personal life companion for physical health, recovery, fitness, and personal finance.
                 Today's date is %s.
                 
+                === REAL-TIME GROUNDING DATA ===
                 %s
+                ================================
                 
                 BEHAVIOR GUIDELINES:
                 1. Answer FREELY, naturally, and conversationally based on what the user is asking.
-                2. You are NOT constrained to any fixed template or rigid format. Express your thoughts, insights, and recommendations organically.
-                3. If tool data is provided above, use it as your source of truth.
-                4. Never invent or falsify user metrics. All metrics in the tool context are authoritative.
-                5. For casual greetings, identity questions, or general conversation, reply warmly and helpfully without reciting numbers.
-                6. Respond in the user's language (English by default, or Vietnamese/the language the user speaks).
-                7. Format cleanly using Markdown and emojis.
-                """.formatted(today, dataSection);
+                2. You are NOT constrained to any rigid format or pre-set template. Express your thoughts, insights, and recommendations organically.
+                3. The data above is your single source of truth for the user's real numbers. Never invent or falsify metrics.
+                4. Focus on what the user is asking:
+                   - If they ask about spending/money, focus on finances.
+                   - If they ask about workouts/fatigue/health, focus on recovery and readiness.
+                   - If they ask for an overview or "what to pay attention to", synthesize the most critical takeaways.
+                   - If they just greet or chat casually, respond warmly without dumping numbers.
+                5. MATCH THE USER'S LANGUAGE AND TONE:
+                   - If asked in Vietnamese, respond in natural Vietnamese.
+                   - If the user uses casual/informal pronouns (e.g. "tao/mày"), match their casual, candid vibe naturally.
+                   - If asked in English, reply in English.
+                6. Format cleanly using standard Markdown (*bold*, lists, emojis). Avoid unclosed formatting markers.
+                """.formatted(today, dataJson);
 
         return chatClient.prompt()
                 .system(systemPrompt)
@@ -68,49 +71,18 @@ public class AssistantService {
                 .content();
     }
 
-    private String gatherRelevantToolData(String message) {
-        String lower = message.toLowerCase();
-        StringBuilder sb = new StringBuilder();
-
-        boolean needsHealth = lower.matches(".*\\b(health|recovery|readiness|workout|exercise|training|gym|run|running|hrv|rhr|heart|stress|stressed|fatigue|tired|energy|strain|cardio)\\b.*");
-        boolean needsSleep = lower.matches(".*\\b(sleep|sleeping|slept|bed|bedtime|wake|waking|rem|deep sleep|light sleep|nap|insomnia|rest|debt)\\b.*");
-        boolean needsWeight = lower.matches(".*\\b(weight|weigh|scale|kg|kilogram|body|fat|muscle|diet|bulk|cutting|ema)\\b.*");
-        boolean needsFinance = lower.matches(".*\\b(finance|finances|financial|money|budget|spend|spending|spent|burn|allowance|savings|afford|cost|expensive|balance)\\b.*");
-        boolean needsTransactions = lower.matches(".*\\b(transaction|transactions|history|receipt|receipts|purchase|purchases|bought|groceries|coffee|shopee)\\b.*");
-        boolean isComprehensive = lower.matches(".*\\b(overview|summary|status|how am i doing|briefing|checkup|report|dashboard)\\b.*");
-
-        if (isComprehensive) {
-            needsHealth = true;
-            needsSleep = true;
-            needsWeight = true;
-            needsFinance = true;
-        }
-
+    private String buildCurrentDataJson() {
         try {
-            if (needsHealth) {
-                var readiness = assistantTools.getHealthReadiness(null);
-                sb.append("[Tool: getHealthReadiness]\n").append(MAPPER.writeValueAsString(readiness)).append("\n\n");
-            }
-            if (needsSleep) {
-                var sleep = assistantTools.getSleepBreakdown();
-                sb.append("[Tool: getSleepBreakdown]\n").append(MAPPER.writeValueAsString(sleep)).append("\n\n");
-            }
-            if (needsWeight) {
-                var weight = assistantTools.getWeightTrend();
-                sb.append("[Tool: getWeightTrend]\n").append(MAPPER.writeValueAsString(weight)).append("\n\n");
-            }
-            if (needsFinance) {
-                var finance = assistantTools.getFinancialBurnRate();
-                sb.append("[Tool: getFinancialBurnRate]\n").append(MAPPER.writeValueAsString(finance)).append("\n\n");
-            }
-            if (needsTransactions) {
-                var txs = assistantTools.getRecentTransactions(10);
-                sb.append("[Tool: getRecentTransactions]\n").append(MAPPER.writeValueAsString(txs)).append("\n\n");
-            }
+            Map<String, Object> data = new LinkedHashMap<>();
+            data.put("health_readiness", assistantTools.getHealthReadiness(null));
+            data.put("sleep_stages", assistantTools.getSleepBreakdown());
+            data.put("weight_trend", assistantTools.getWeightTrend());
+            data.put("finances_month_to_date", assistantTools.getFinancialBurnRate());
+            data.put("recent_transactions", assistantTools.getRecentTransactions(5));
+            return MAPPER.writerWithDefaultPrettyPrinter().writeValueAsString(data);
         } catch (Exception e) {
-            log.warn("Error serializing tool data for assistant: {}", e.getMessage());
+            log.warn("Failed to serialize current data for assistant: {}", e.getMessage());
+            return "{}";
         }
-
-        return sb.toString().trim();
     }
 }
