@@ -1,0 +1,7 @@
+**/target/
+**/.git
+**/.idea
+**/*.class
+**/*.jar
+.env
+garmin-puller/__pycache__/
