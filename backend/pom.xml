@@ -55,7 +55,7 @@
         </dependency>
         <dependency>
             <groupId>org.springframework.boot</groupId>
-            <artifactId>spring-boot-starter-scheduling</artifactId>
+            <artifactId>spring-boot-starter-security</artifactId>
         </dependency>
 
         <!-- Database -->
@@ -76,19 +76,19 @@
         <!-- Spring AI - Gemini (OpenAI-compatible endpoint) -->
         <dependency>
             <groupId>org.springframework.ai</groupId>
-            <artifactId>spring-ai-openai-spring-boot-starter</artifactId>
+            <artifactId>spring-ai-starter-model-openai</artifactId>
         </dependency>
 
         <!-- Spring AI - Ollama -->
         <dependency>
             <groupId>org.springframework.ai</groupId>
-            <artifactId>spring-ai-ollama-spring-boot-starter</artifactId>
+            <artifactId>spring-ai-starter-model-ollama</artifactId>
         </dependency>
 
         <!-- Telegram Bot -->
         <dependency>
             <groupId>org.telegram</groupId>
-            <artifactId>telegrambots-longpolling</artifactId>
+            <artifactId>telegrambots-springboot-longpolling-starter</artifactId>
             <version>7.10.0</version>
         </dependency>
         <dependency>

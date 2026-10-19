@@ -67,10 +67,10 @@ public class VisionOcrService {
         log.info("Running Vision OCR on image: {}", imageUrl);
         try {
             Media media = new Media(MimeType.valueOf(mimeType), URI.create(imageUrl));
-            UserMessage userMessage = new UserMessage(
-                    "Extract the financial transaction from this image.",
-                    List.of(media)
-            );
+            UserMessage userMessage = UserMessage.builder()
+                    .text("Extract the financial transaction from this image.")
+                    .media(media)
+                    .build();
 
             String raw = chatClient.prompt()
                     .system(OCR_SYSTEM_PROMPT)
