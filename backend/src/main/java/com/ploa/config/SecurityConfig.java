@@ -14,11 +14,15 @@ import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
 import org.springframework.security.config.annotation.web.configurers.AbstractHttpConfigurer;
 import org.springframework.security.config.http.SessionCreationPolicy;
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
+import org.springframework.security.web.authentication.preauth.PreAuthenticatedAuthenticationToken;
 import org.springframework.web.filter.OncePerRequestFilter;
 
 import java.io.IOException;
+import java.util.List;
 
 @Configuration
 @EnableWebSecurity
@@ -34,10 +38,12 @@ public class SecurityConfig {
     public SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
         return http
                 .csrf(AbstractHttpConfigurer::disable)
+                .httpBasic(AbstractHttpConfigurer::disable)
+                .formLogin(AbstractHttpConfigurer::disable)
                 .sessionManagement(sm -> sm.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .addFilterBefore(apiKeyFilter(), UsernamePasswordAuthenticationFilter.class)
                 .authorizeHttpRequests(auth -> auth
-                        .requestMatchers("/actuator/health").permitAll()
+                        .requestMatchers("/actuator/**").permitAll()
                         .anyRequest().authenticated()
                 )
                 .build();
@@ -50,7 +56,7 @@ public class SecurityConfig {
                                             HttpServletResponse response,
                                             FilterChain chain) throws ServletException, IOException {
                 String path = request.getRequestURI();
-                if (path.startsWith("/actuator/health")) {
+                if (path.startsWith("/actuator")) {
                     chain.doFilter(request, response);
                     return;
                 }
@@ -59,9 +65,13 @@ public class SecurityConfig {
                 if (expected == null || !expected.equals(key)) {
                     log.warn("Rejected request to {} — invalid or missing X-API-Key", path);
                     response.setStatus(HttpStatus.UNAUTHORIZED.value());
+                    response.setContentType("application/json");
                     response.getWriter().write("{\"error\":\"Unauthorized\"}");
                     return;
                 }
+                var auth = new PreAuthenticatedAuthenticationToken("apiKeyUser", null,
+                        List.of(new SimpleGrantedAuthority("ROLE_USER")));
+                SecurityContextHolder.getContext().setAuthentication(auth);
                 chain.doFilter(request, response);
             }
         };
