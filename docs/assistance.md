@@ -64,7 +64,12 @@ To prevent hallucinations, over-fetching, and redundant calls, the Planner execu
    - Inquiries about current progress resolve to `date: "today"`.
    - Inquiries referencing calendar dates resolve to `YYYY-MM-DD`.
 3. **Cross-Domain Separation**: Financial questions never query health tools; workout questions never query financial ledgers.
-4. **Persistent Memory Gate**: `saveUserMemory` is called **only** when the user reveals a lasting habit or preference (e.g. *"I recently became vegetarian"*, *"Target 21km half-marathon in December"*), not transient feelings.
+4. **Persistent Memory Gate (`saveUserMemory`)**:
+   - Explicit persona, tone, nickname, language, or pronoun rules (e.g. *"xưng hô mày tao khi dùng tiếng Việt"*, *"call me Boss"*, *"speak casually"*).
+   - Long-term dietary habits and constraints (e.g. *"I am vegetarian"*, *"lactose intolerant"*).
+   - Athletic & fitness goals (e.g. *"Target 21km half-marathon in December"*).
+   - Monthly financial budgets or savings rules.
+   - General instructions beginning with *"Từ bây giờ..."*, *"From now on..."*, or *"Remember that..."*.
 
 ---
 
@@ -76,14 +81,15 @@ To prevent hallucinations, over-fetching, and redundant calls, the Planner execu
 - Enables natural follow-up dialogue:
   - User: *"How many steps did I take yesterday?"* $\rightarrow$ Model answers for yesterday (4,363 steps).
   - User: *"What about today?"* $\rightarrow$ Model understands context and answers for today.
+- Reset anytime via `/new` or `DELETE /api/v1/memory/history?chatId=...`.
 
 ### 2. Long-Term Personalization Memory
 - Table: `user_memories` (`category`, `memory_key`, `memory_value`, `source`, `created_at`, `updated_at`).
-- Categories: `FITNESS`, `DIET`, `FINANCE`, `LIFESTYLE`, `GOAL`, `GENERAL`.
+- Categories: `PREFERENCE`, `PERSONA`, `FITNESS`, `DIET`, `FINANCE`, `LIFESTYLE`, `GOAL`, `GENERAL`.
 - **Dual Write Path**:
   - **Explicit User API**: `POST /api/v1/memory`
   - **Conversational Memory**: Model autonomously extracts and saves facts using `saveUserMemory`.
-- **Continuous Personalization**: Profile memories are automatically grounded into every prompt, allowing the assistant to tailor advice to the user's specific dietary and fitness goals.
+- **Continuous Personalization**: Profile memories are automatically grounded into every prompt, and the model is strictly instructed to obey saved persona, tone, and pronoun preferences.
 
 ---
 

@@ -75,6 +75,7 @@ All endpoints accept authentication via `X-API-Key: <key>`, `Authorization: Bear
 
 | Method | Endpoint | Description | Query Parameters |
 |---|---|---|---|
+| `GET` | `/api/v1/health/daily` | Retrieve biometrics for a specific date (`today`, `yesterday`, or `YYYY-MM-DD`). | `?date=today` or `?date=yesterday` or `?date=YYYY-MM-DD` |
 | `GET` | `/api/v1/health/today` | Return comprehensive live biometrics for today (Body Battery, Stress, Steps, Calories, etc.). | None |
 | `POST` | `/api/v1/health/pull` | Trigger immediate on-demand synchronization from the Garmin sidecar. | None |
 | `POST` | `/api/v1/health/sync` | Ingest daily physiological metrics (idempotent upsert by date). | Request Body (`HealthSyncRequest`) |

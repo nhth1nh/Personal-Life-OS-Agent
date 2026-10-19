@@ -135,15 +135,18 @@ PLOA/
 │       │   ├── repository/         # TransactionRepository
 │       │   └── service/            # FinanceService
 │       ├── assistant/              # Life OS AI Assistant Domain
-│       │   ├── api/                # ChatController (/api/v1/chat)
+│       │   ├── api/                # ChatController (/chat), MemoryController (/memory)
 │       │   ├── dto/                # ChatRequest, ChatResponse
-│       │   └── AssistantService.java
-│       ├── briefing/               # Morning Briefing Domain
-│       │   ├── api/                # BriefingController (/preview, /trigger)
-│       │   └── BriefingOrchestrator.java
+│       │   ├── memory/             # ChatMessage, UserMemory entities & MemoryService
+│       │   ├── tools/              # AssistantTools (Atomic SRP Tool Matrix)
+│       │   └── AssistantService.java # Two-Stage Selective Tool Planner
+│       ├── briefing/               # Morning & Evening Briefing Domain
+│       │   ├── api/                # BriefingController (/preview, /trigger, /evening/*)
+│       │   └── BriefingOrchestrator.java # 07:30 Morning & 21:30 Evening Schedulers
 │       ├── bot/                    # Telegram Bot Gateway
 │       │   ├── TelegramBotHandler.java
-│       │   └── BotMessageFactory.java
+│       │   ├── BotMessageFactory.java
+│       │   └── TelegramFormatter.java # Safe Markdown to HTML Formatter
 │       └── ai/                     # Vision OCR Service (Gemini / Ollama)
 └── garmin-puller/                  # Python sidecar
     ├── Dockerfile
