@@ -149,31 +149,47 @@ def pull_and_sync(target_date: date | None = None) -> bool:
         return False
 
 
+def sync_daily():
+    """Sync yesterday (finalizes steps/kcal) and today (morning recovery & weight)."""
+    today = date.today()
+    yesterday = today - timedelta(days=1)
+    log.info(f"Syncing yesterday ({yesterday}) to finalize metrics...")
+    pull_and_sync(yesterday)
+    log.info(f"Syncing today ({today}) for morning recovery & weight...")
+    pull_and_sync(today)
+
+
 def job():
     log.info("Scheduled pull triggered")
-    pull_and_sync()
+    sync_daily()
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Garmin Puller")
-    parser.add_argument("--now", action="store_true", help="Pull yesterday's metrics immediately and exit")
+    parser.add_argument("--now", action="store_true", help="Pull metrics immediately and exit")
     parser.add_argument("--date", type=str, help="Pull metrics for specific date (YYYY-MM-DD) and exit")
+    parser.add_argument("--backfill", type=int, help="Backfill past N days of metrics and exit")
     args = parser.parse_args()
 
     if args.date:
         target = date.fromisoformat(args.date)
         log.info(f"One-off pull requested for {target}")
         pull_and_sync(target)
+    elif args.backfill:
+        log.info(f"Backfill requested for the past {args.backfill} days")
+        today = date.today()
+        for i in range(args.backfill, -1, -1):
+            pull_and_sync(today - timedelta(days=i))
     elif args.now:
-        log.info("One-off pull requested for yesterday")
-        pull_and_sync()
+        log.info("One-off sync requested")
+        sync_daily()
     else:
         log.info(f"Garmin Puller daemon starting — scheduled at {GARMIN_PULL_TIME} daily")
         schedule.every().day.at(GARMIN_PULL_TIME).do(job)
 
-        # Initial pull on startup
+        # Initial pull on startup: sync both yesterday and today
         log.info("Running initial pull on startup...")
-        pull_and_sync()
+        sync_daily()
 
         while True:
             schedule.run_pending()
