@@ -67,11 +67,31 @@ public class HealthController {
     }
 
     /**
+     * Get full Garmin biometrics for a specific date (supports "today", "yesterday", or "YYYY-MM-DD").
+     */
+    @GetMapping("/daily")
+    public ResponseEntity<com.ploa.health.model.HealthMetric> getDailyMetrics(
+            @RequestParam(defaultValue = "today") String date) {
+        LocalDate target = parseTargetDate(date);
+        return ResponseEntity.ok(healthService.getMetricsForDate(target));
+    }
+
+    /**
      * Get full live Garmin biometrics for today (Body Battery, Stress, Calories, Steps, SpO2, Heart Rate).
      */
     @GetMapping("/today")
     public ResponseEntity<com.ploa.health.model.HealthMetric> getTodayMetrics() {
         return ResponseEntity.ok(healthService.getMetricsForDate(LocalDate.now()));
+    }
+
+    private LocalDate parseTargetDate(String date) {
+        if (date == null || date.isBlank() || "today".equalsIgnoreCase(date)) {
+            return LocalDate.now();
+        }
+        if ("yesterday".equalsIgnoreCase(date)) {
+            return LocalDate.now().minusDays(1);
+        }
+        return LocalDate.parse(date.trim());
     }
 
     /**

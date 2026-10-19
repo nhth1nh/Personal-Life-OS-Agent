@@ -212,6 +212,7 @@ All protected endpoints accept authentication through any of the following metho
 ### 1. Health & Recovery
 | Method | Endpoint | Description | Query / Body |
 |---|---|---|---|
+| **GET** | `/api/v1/health/daily` | Retrieve biometrics for a specific date (today, yesterday, or YYYY-MM-DD). | `?date=today` or `?date=yesterday` or `?date=2026-10-18` |
 | **GET** | `/api/v1/health/today` | Retrieve comprehensive live biometrics for today (Body Battery, Stress, Calories, Steps, etc.). | *(None)* |
 | **POST** | `/api/v1/health/pull` | Trigger immediate on-demand synchronization from the Garmin sidecar. | *(None)* |
 | **POST** | `/api/v1/health/sync` | Ingest daily physiological metrics (idempotent upsert). | `{"date":"2026-10-19", "hrvRmssd":50, "rhr":53, ...}` |
@@ -226,11 +227,15 @@ All protected endpoints accept authentication through any of the following metho
 | **GET** | `/api/v1/finance/transactions` | List confirmed and draft transactions for the current month. | `?limit=30` |
 | **POST** | `/api/v1/finance/ocr` | Upload and extract structured receipt data from an image file. | Multipart form-data `file=@receipt.jpg` |
 
-### 3. AI Assistant & Chat
+### 3. AI Assistant & Memory
 | Method | Endpoint | Description | Query / Body |
 |---|---|---|---|
-| **POST** | `/api/v1/chat` | Conversational query grounded in real-time metrics. | `{"message": "Should I work out today?"}` |
-| **GET** | `/api/v1/chat` | Browser-accessible chat query. | `?q=how+is+my+recovery+today` |
+| **POST** | `/api/v1/chat` | Conversational query with multi-turn session tracking & selective tools. | `{"message": "Hôm qua tao chạy mấy km?", "chatId": "session-1"}` |
+| **GET** | `/api/v1/chat` | Browser-accessible chat query. | `?q=how+is+my+recovery&chatId=browser-1` |
+| **GET** | `/api/v1/memory` | List all stored long-term user preferences & goals. | `?category=FITNESS` (optional) |
+| **POST** | `/api/v1/memory` | Save or update a persistent user habit/goal/preference. | `{"category": "FITNESS", "key": "goal", "value": "21km"}` |
+| **DELETE** | `/api/v1/memory/{id}` | Delete a stored user memory by UUID. | *(None)* |
+| **DELETE** | `/api/v1/memory/history` | Clear conversation history for a given session/chat ID. | `?chatId=session-1` |
 
 ### 4. Morning Briefing
 | Method | Endpoint | Description | Query / Body |

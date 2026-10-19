@@ -22,22 +22,26 @@ public class ChatController {
      */
     @PostMapping
     public ResponseEntity<ChatResponse> chat(@Valid @RequestBody ChatRequest request) {
-        String reply = assistantService.chat(request.message());
+        String chatId = (request.chatId() != null && !request.chatId().isBlank())
+                ? request.chatId()
+                : "api-session";
+        String reply = assistantService.chat(chatId, request.message());
         return ResponseEntity.ok(new ChatResponse(reply, "CHAT"));
     }
 
     /**
-     * Browser-friendly GET endpoint: /api/v1/chat?q=...&apiKey=...
+     * Browser-friendly GET endpoint: /api/v1/chat?q=...&chatId=...&apiKey=...
      */
     @GetMapping
     public ResponseEntity<ChatResponse> chatGet(
             @RequestParam(name = "q", required = false) String q,
-            @RequestParam(name = "message", required = false) String message) {
+            @RequestParam(name = "message", required = false) String message,
+            @RequestParam(name = "chatId", defaultValue = "browser-session") String chatId) {
         String query = q != null ? q : message;
         if (query == null || query.isBlank()) {
             query = "What is the summary of my health and financial status today?";
         }
-        String reply = assistantService.chat(query);
+        String reply = assistantService.chat(chatId, query);
         return ResponseEntity.ok(new ChatResponse(reply, "CHAT"));
     }
 }

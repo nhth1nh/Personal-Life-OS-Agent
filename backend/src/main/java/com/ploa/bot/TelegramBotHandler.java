@@ -209,7 +209,7 @@ public class TelegramBotHandler implements SpringLongPollingBot, LongPollingUpda
         } else {
             // Life OS AI Assistant chat!
             sendText(chatId, "🤔 *PLOA is thinking...*");
-            String reply = assistantService.chat(text);
+            String reply = assistantService.chat(String.valueOf(chatId), text);
             sendText(chatId, reply);
         }
     }
