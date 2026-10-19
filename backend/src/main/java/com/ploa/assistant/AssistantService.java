@@ -69,6 +69,9 @@ public class AssistantService {
 
         // 4. Execute only the planned tools
         Map<String, Object> groundingData = executePlan(plan);
+        if (groundingData.containsKey("memory_saved")) {
+            preferences = memoryService.getAllPreferences();
+        }
 
         // 5. Build prompt with selective grounding, user profile, and conversation history
         String systemPrompt = buildSystemPrompt(today, groundingData, preferences, history);
@@ -99,20 +102,26 @@ public class AssistantService {
                 - "getWeightTrend": Latest weight, 7-day EMA trend, distance to target weight.
                 - "getFinancialStatus": Monthly budget, MTD spend, daily burn rate, safe daily allowance, savings rate.
                 - "getRecentTransactions": List of recent individual expense transactions.
-                - "saveUserMemory": User reveals a persistent habit, diet, running/fitness goal, or preference to store in long-term memory.
+                - "saveUserMemory": CRITICAL for personalization. Call this whenever the user shares or instructs any long-term preference, persona/tone rule, pronoun/form of address, nickname, communication style, dietary rule, fitness goal, or personal profile fact.
                 
                 RULES:
-                1. If the message is a greeting, casual banter, general opinion, or general advice ("hello", "how are you", "tips for good sleep"), return NO tools.
-                2. If the user asks about the previous day ("yesterday", "last night"), set date="yesterday".
-                3. If the user asks about the current day ("today", "now"), set date="today".
-                4. Only select tools strictly relevant to the question (do NOT select finance for health queries, or vice-versa).
-                5. If user states a permanent goal or habit (e.g. "I am vegetarian", "marathon goal in December"), include "saveUserMemory" with category, key, value.
+                1. "saveUserMemory" TRIGGER: Call "saveUserMemory" whenever the user:
+                   - Instructs how to address them, persona, tone, language, or pronouns (e.g., "xưng hô mày tao", "call me X", "speak informally", "from now on always...").
+                   - Shares personal profile info (name, job, age, habits).
+                   - States a permanent rule, goal, or constraint (e.g., "I am vegetarian", "target 21km in Dec", "monthly budget 15M").
+                   - Explicitly asks to remember or note something down ("remember that...", "nhớ là...").
+                   Set category: "PREFERENCE" | "PERSONA" | "FITNESS" | "DIET" | "FINANCE" | "LIFESTYLE" | "GOAL" | "GENERAL".
+                2. Only return NO tools ({"tools": []}) if the message is purely transient casual chitchat or general knowledge questions without ANY user instructions, preferences, or personal metrics (e.g. "hello", "how are you today?", "what causes insomnia?").
+                3. If the user asks about past physical activity ("yesterday", "hôm qua", "last night"), set date="yesterday".
+                4. If the user asks about current physical activity ("today", "hôm nay", "now"), set date="today".
+                5. If a calendar date is specified, set date="YYYY-MM-DD".
+                6. Only select data tools relevant to the domain (do not select finance for health queries, or health for finance queries).
                 
                 OUTPUT FORMAT: Strict JSON only:
                 {
-                  "tools": ["getDailyHealth", ...],
+                  "tools": ["saveUserMemory", ...],
                   "date": "today" | "yesterday" | "YYYY-MM-DD",
-                  "memory": {"category": "FITNESS|DIET|FINANCE|LIFESTYLE|GOAL|GENERAL", "key": "...", "value": "..."}
+                  "memory": {"category": "PREFERENCE|PERSONA|FITNESS|DIET|FINANCE|LIFESTYLE|GOAL|GENERAL", "key": "...", "value": "..."}
                 }
                 If no tools are needed, output:
                 {"tools": []}
@@ -215,16 +224,17 @@ public class AssistantService {
         // 4. Behavioral Guidelines
         sb.append("""
                 BEHAVIOR GUIDELINES:
-                1. Answer FREELY, naturally, and conversationally based strictly on what the user is asking.
-                2. You are NOT constrained to any rigid format or pre-set template.
-                3. The retrieved data above is your single source of truth for the user's real numbers. Never invent or falsify metrics.
-                4. If specific data was retrieved for 'yesterday' or another date, answer accurately for that requested date!
-                5. If no empirical data was needed (e.g. casual chitchat, greetings, conceptual advice), answer warmly and concisely.
-                6. MATCH THE USER'S LANGUAGE AND TONE:
+                1. STRICTLY ADHERE to all rules, personas, forms of address, pronouns, tone instructions, and life preferences specified in "USER PROFILE & LONG-TERM MEMORIES" above (e.g. if the user asked to be addressed with specific pronouns like mày-tao in Vietnamese, you MUST strictly use that style).
+                2. Answer FREELY, naturally, and conversationally based strictly on what the user is asking.
+                3. You are NOT constrained to any rigid format or pre-set template.
+                4. The retrieved data above is your single source of truth for the user's real numbers. Never invent or falsify metrics.
+                5. If specific data was retrieved for 'yesterday' or another date, answer accurately for that requested date!
+                6. If a new memory was saved during this turn (present in RETRIEVED GROUNDING DATA as "memory_saved"), acknowledge it naturally and confirm you will remember it.
+                7. MATCH THE USER'S LANGUAGE AND TONE:
                    - If asked in Vietnamese, respond in natural Vietnamese.
                    - If the user uses casual or informal tone, match their casual, candid vibe naturally.
                    - If asked in English, reply in English.
-                7. Format cleanly using standard Markdown (*bold*, lists, emojis). Avoid unclosed formatting markers.
+                8. Format cleanly using standard Markdown (*bold*, lists, emojis). Avoid unclosed formatting markers.
                 """);
 
         return sb.toString();
