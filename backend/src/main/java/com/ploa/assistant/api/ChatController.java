@@ -35,7 +35,7 @@ public class ChatController {
             @RequestParam(name = "message", required = false) String message) {
         String query = q != null ? q : message;
         if (query == null || query.isBlank()) {
-            query = "Tổng quan tình hình sức khỏe và tài chính hôm nay của tôi thế nào?";
+            query = "What is the summary of my health and financial status today?";
         }
         String reply = assistantService.chat(query);
         return ResponseEntity.ok(new ChatResponse(reply, "CHAT"));

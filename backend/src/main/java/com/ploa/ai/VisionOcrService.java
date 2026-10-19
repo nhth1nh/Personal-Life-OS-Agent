@@ -95,17 +95,17 @@ public class VisionOcrService {
     }
 
     /**
-     * Parse a quick text expense like "50k cafe" or "120k cầu lông".
+     * Parse a quick text expense like "50k coffee" or "120k groceries".
      */
     public OcrResult extractFromText(String text) {
         log.info("Parsing text expense: {}", text);
         String prompt = """
-                Parse this Vietnamese expense note into structured JSON.
+                Parse this expense note into structured JSON.
                 Input: "%s"
                 
                 Return ONLY JSON (same schema as before). For amounts:
                 - "50k" = 50000 VND
-                - "1.5tr" or "1.5m" = 1500000 VND
+                - "1.5m" = 1500000 VND
                 - "200" = 200 VND (assume literal if no unit)
                 """.formatted(text);
         try {

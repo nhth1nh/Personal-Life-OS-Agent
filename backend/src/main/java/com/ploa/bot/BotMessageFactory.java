@@ -147,8 +147,8 @@ public class BotMessageFactory {
                 /help — Show this message
                 
                 *Quick Expense:*
-                Send a photo of a receipt, bank transfer, or Shopee order.
-                Or type: `50k cafe`, `120k cầu lông`, `200k điện`
+                Send a photo of a receipt, transfer, or online checkout.
+                Or type: `50k coffee`, `120k groceries`, `200k electricity`
                 """;
     }
 }

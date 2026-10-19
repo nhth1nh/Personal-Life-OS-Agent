@@ -154,7 +154,7 @@ public class TelegramBotHandler implements SpringLongPollingBot, LongPollingUpda
         }
 
         if (isExpenseIntent(text)) {
-            // Quick expense: "50k cafe", "bún bò 45k"
+            // Quick expense: "50k coffee", "45k lunch"
             sendText(chatId, "💬 Parsing expense...");
             OcrResult ocr = ocrService.extractFromText(text);
             Transaction tx = buildTransaction(ocr, null);
@@ -172,16 +172,16 @@ public class TelegramBotHandler implements SpringLongPollingBot, LongPollingUpda
     private boolean isExpenseIntent(String text) {
         String t = text.trim();
         // Explicit expense command
-        if (t.matches("(?i)^/(expense|chi|spend)\\s+.*")) return true;
+        if (t.matches("(?i)^/(expense|spend|pay)\\s+.*")) return true;
         // If it looks like a question or conversational prompt, treat as chat
-        if (t.contains("?") || t.matches("(?i).*(bao nhiêu|thế nào|sao rồi|như nào|như thế nào|hôm nay|có nên|tại sao|làm sao|chào|hello|hi|what|how|why|should|can i|is it).*")) {
+        if (t.contains("?") || t.matches("(?i).*(what|how|why|should|can i|is it|status|overview|tell me|explain|hello|hi).*")) {
             return false;
         }
         // Typical expense patterns:
-        // 1. Contains a number + currency token: "50k", "120.000đ", "200k", "500 ngàn", "1.5tr"
-        // 2. Starts with number + space + text: "50 cafe"
-        return t.matches("(?i).*\\b\\d+([.,]\\d+)?\\s*(k|vnd|đ|d|nghìn|ngàn|tram|tr|triệu|cành|lít)\\b.*")
-                || t.matches("^\\d+([.,]\\d+)?\\s+[a-zA-ZÀ-ỹ].*");
+        // 1. Contains a number + currency token: "50k", "200k", "1.5m", "100 usd", "50 vnd"
+        // 2. Starts with number + space + text: "50 coffee"
+        return t.matches("(?i).*\\b\\d+([.,]\\d+)?\\s*(k|vnd|usd|eur|m)?\\b.*")
+                || t.matches("^\\d+([.,]\\d+)?\\s+[a-zA-Z].*");
     }
 
     // ── Command handler ───────────────────────────────────────────────────────
