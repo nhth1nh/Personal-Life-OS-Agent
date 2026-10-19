@@ -1,6 +1,8 @@
 # Cloud profile: uses Gemini 1.5 Flash via OpenAI-compatible endpoint
 spring:
   ai:
+    model:
+      chat: openai
     openai:
       api-key: ${GOOGLE_AI_API_KEY}
       base-url: https://generativelanguage.googleapis.com/v1beta/openai
@@ -8,11 +10,6 @@ spring:
         options:
           model: ${GEMINI_MODEL:gemini-1.5-flash}
           temperature: 0.2
-      image:
-        options:
-          model: ${GEMINI_MODEL:gemini-1.5-flash}
-    ollama:
-      enabled: false
 
 ploa:
   ai:

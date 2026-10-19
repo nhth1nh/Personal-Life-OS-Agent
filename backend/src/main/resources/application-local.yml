@@ -1,8 +1,8 @@
 # Local profile: uses Ollama on workstation (RTX 5070 Ti)
 spring:
   ai:
-    openai:
-      enabled: false
+    model:
+      chat: ollama
     ollama:
       base-url: ${OLLAMA_BASE_URL:http://localhost:11434}
       chat:
