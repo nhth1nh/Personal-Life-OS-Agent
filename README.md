@@ -1,5 +1,6 @@
 # Personal Life OS Agent (PLOA)
 
+[![CI/CD Pipeline](https://github.com/nhthinh-axonivy/Personal-Life-OS-Agent/actions/workflows/ci-cd.yml/badge.svg)](https://github.com/nhthinh-axonivy/Personal-Life-OS-Agent/actions/workflows/ci-cd.yml)
 [![Java 25](https://img.shields.io/badge/Java-25-orange.svg)](https://openjdk.org/projects/jdk/25/)
 [![Spring Boot](https://img.shields.io/badge/Spring%20Boot-3.4.0-brightgreen.svg)](https://spring.io/projects/spring-boot)
 [![PostgreSQL](https://img.shields.io/badge/PostgreSQL-16-blue.svg)](https://www.postgresql.org/)
