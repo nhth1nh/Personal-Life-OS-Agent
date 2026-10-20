@@ -106,6 +106,8 @@ class AssistantServiceTest {
         assertThat(assistantService.shouldSkipToolPlanning("ok")).isTrue();
         assertThat(assistantService.shouldSkipToolPlanning("got it")).isTrue();
         assertThat(assistantService.shouldSkipToolPlanning("Who are you?")).isTrue();
+        assertThat(assistantService.shouldSkipToolPlanning("Please analyze this image.")).isTrue();
+        assertThat(assistantService.shouldSkipToolPlanning("Analyze image")).isTrue();
     }
 
     @Test

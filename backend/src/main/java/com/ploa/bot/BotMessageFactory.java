@@ -77,6 +77,34 @@ public class BotMessageFactory {
                 .build();
     }
 
+    public SendMessage buildImageIntentMessage(long chatId, String pendingId) {
+        InlineKeyboardMarkup keyboard = InlineKeyboardMarkup.builder()
+                .keyboardRow(new InlineKeyboardRow(List.of(
+                        InlineKeyboardButton.builder()
+                                .text("🧾 Log as Expense")
+                                .callbackData("IMG_RECEIPT:" + pendingId)
+                                .build(),
+                        InlineKeyboardButton.builder()
+                                .text("💬 Ask Assistant")
+                                .callbackData("IMG_CHAT:" + pendingId)
+                                .build()
+                )))
+                .keyboardRow(new InlineKeyboardRow(List.of(
+                        InlineKeyboardButton.builder()
+                                .text("❌ Cancel")
+                                .callbackData("IMG_CANCEL:" + pendingId)
+                                .build()
+                )))
+                .build();
+
+        return SendMessage.builder()
+                .chatId(chatId)
+                .text("🤔 <b>What would you like to do with this image?</b>")
+                .parseMode("HTML")
+                .replyMarkup(keyboard)
+                .build();
+    }
+
     private String escapeHtml(String text) {
         if (text == null) return "";
         return text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;");

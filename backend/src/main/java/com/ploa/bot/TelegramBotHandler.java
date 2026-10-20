@@ -61,6 +61,16 @@ public class TelegramBotHandler implements SpringLongPollingBot, LongPollingUpda
     private final AssistantService assistantService;
     private final BotMessageFactory messageFactory;
 
+    record PendingImage(
+            byte[] photoBytes,
+            String mimeType,
+            long originalMsgId,
+            String caption,
+            java.time.Instant createdAt
+    ) {}
+
+    final java.util.Map<String, PendingImage> pendingImages = new java.util.concurrent.ConcurrentHashMap<>();
+
     public TelegramBotHandler(PloaProperties properties,
                                VisionOcrService ocrService,
                                FinanceService financeService,
@@ -185,7 +195,7 @@ public class TelegramBotHandler implements SpringLongPollingBot, LongPollingUpda
     }
 
     private void processIncomingImage(long chatId, long msgId, byte[] photoBytes, String mimeType, String caption) throws TelegramApiException {
-        // If the caption explicitly indicates a conversational query or question rather than logging a receipt
+        // 1. Explicit conversational query or question via caption
         if (isImageChatIntent(caption)) {
             sendText(chatId, "🤔 *PLOA is analyzing your image...*");
             AssistantService.ChatResult res = assistantService.chatDetailed(String.valueOf(chatId), caption, photoBytes, mimeType);
@@ -193,12 +203,26 @@ public class TelegramBotHandler implements SpringLongPollingBot, LongPollingUpda
             return;
         }
 
-        // Otherwise, attempt OCR extraction as a receipt / payment document
-        sendText(chatId, "🔍 Analyzing document...");
+        // 2. Explicit financial/expense intent via caption
+        if (isImageExpenseIntent(caption)) {
+            sendText(chatId, "🔍 Analyzing document...");
+            processReceiptImage(chatId, msgId, photoBytes, mimeType, caption);
+            return;
+        }
+
+        // 3. Ambiguous or uncaptioned image: ask user intent via interactive inline keyboard
+        cleanupExpiredPendingImages();
+        String pendingId = UUID.randomUUID().toString();
+        pendingImages.put(pendingId, new PendingImage(photoBytes, mimeType, msgId, caption, java.time.Instant.now()));
+
+        SendMessage promptMsg = messageFactory.buildImageIntentMessage(chatId, pendingId);
+        telegramClient.execute(promptMsg);
+    }
+
+    private void processReceiptImage(long chatId, long msgId, byte[] photoBytes, String mimeType, String caption) throws TelegramApiException {
         String imageSha256 = computeSha256(photoBytes);
         OcrResult ocr = ocrService.extractFromImage(photoBytes, mimeType);
 
-        // Check if the image actually contained a financial transaction
         boolean isFinancialDocument = ocr != null
                 && ocr.totalAmount() != null
                 && ocr.totalAmount() > 0
@@ -221,15 +245,9 @@ public class TelegramBotHandler implements SpringLongPollingBot, LongPollingUpda
                 financeService.save(saved);
             }
         } else {
-            // Not a financial transaction! User sent an image to chat or consult with the assistant (food, workout, general).
-            log.info("Uploaded image is not a financial receipt (document_type={}, amount={}); routing to Assistant vision chat",
+            log.info("Uploaded image is not a financial receipt (document_type={}, amount={})",
                     ocr != null ? ocr.documentType() : null, ocr != null ? ocr.totalAmount() : null);
-            String prompt = (caption != null && !caption.isBlank())
-                    ? caption
-                    : "Please analyze this image in the context of my personal health, nutrition, fitness, or daily life.";
-            sendText(chatId, "🤔 *Not a financial receipt. Consulting Life OS Assistant...*");
-            AssistantService.ChatResult res = assistantService.chatDetailed(String.valueOf(chatId), prompt, photoBytes, mimeType);
-            sendText(chatId, res.reply());
+            sendText(chatId, "⚠️ *Could not detect a financial receipt or invoice from this image.*\n\n_If you'd like to consult the assistant about this photo, simply type your question in chat._");
         }
     }
 
@@ -240,6 +258,15 @@ public class TelegramBotHandler implements SpringLongPollingBot, LongPollingUpda
             return false;
         }
         return c.contains("?") || c.matches("(?i).*(what|how|why|should|can|could|is this|explain|help|calories?|workout|nutrition).*");
+    }
+
+    boolean isImageExpenseIntent(String caption) {
+        if (caption == null || caption.isBlank()) return false;
+        String c = caption.trim().toLowerCase();
+        if (c.matches("(?i)^/(expense|pay|spend)\\b.*")) {
+            return true;
+        }
+        return c.matches("(?i).*(bill|receipt|invoice|hóa đơn|phiếu thu|chuyển khoản|thanh toán).*");
     }
 
     private boolean isImageDocument(Document doc) {
@@ -431,6 +458,13 @@ public class TelegramBotHandler implements SpringLongPollingBot, LongPollingUpda
 
         String[] parts = data.split(":");
         String action = parts[0];
+
+        if (action.startsWith("IMG_")) {
+            String pendingId = parts.length > 1 ? parts[1] : "";
+            handleImageCallback(chatId, msgId, action, pendingId);
+            return;
+        }
+
         UUID txId = UUID.fromString(parts[1]);
 
         switch (action) {
@@ -466,6 +500,40 @@ public class TelegramBotHandler implements SpringLongPollingBot, LongPollingUpda
             }
             default -> log.warn("Unknown callback action: {}", action);
         }
+    }
+
+    void handleImageCallback(long chatId, int promptMsgId, String action, String pendingId) throws TelegramApiException {
+        PendingImage pending = pendingImages.remove(pendingId);
+        if ("IMG_CANCEL".equals(action)) {
+            editText(chatId, promptMsgId, "🚫 Cancelled.");
+            return;
+        }
+
+        if (pending == null) {
+            editText(chatId, promptMsgId, "⚠️ Image session expired or already processed. Please re-upload.");
+            return;
+        }
+
+        switch (action) {
+            case "IMG_RECEIPT" -> {
+                editText(chatId, promptMsgId, "🔍 <i>Analyzing document...</i>");
+                processReceiptImage(chatId, pending.originalMsgId(), pending.photoBytes(), pending.mimeType(), pending.caption());
+            }
+            case "IMG_CHAT" -> {
+                editText(chatId, promptMsgId, "🤔 <i>PLOA is analyzing your image...</i>");
+                String prompt = (pending.caption() != null && !pending.caption().isBlank())
+                        ? pending.caption()
+                        : "Please analyze this image.";
+                AssistantService.ChatResult res = assistantService.chatDetailed(String.valueOf(chatId), prompt, pending.photoBytes(), pending.mimeType());
+                sendText(chatId, res.reply());
+            }
+            default -> log.warn("Unknown image callback action: {}", action);
+        }
+    }
+
+    void cleanupExpiredPendingImages() {
+        java.time.Instant cutoff = java.time.Instant.now().minus(30, java.time.temporal.ChronoUnit.MINUTES);
+        pendingImages.entrySet().removeIf(e -> e.getValue().createdAt().isBefore(cutoff));
     }
 
     private void handleTransactionRefinement(long chatId, int cardMsgId, Transaction tx, String instruction) throws TelegramApiException {
