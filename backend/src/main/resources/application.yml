@@ -55,5 +55,6 @@ ploa:
     bot-username: ${TELEGRAM_BOT_USERNAME:}
     allowed-chat-ids: ${TELEGRAM_ALLOWED_CHAT_IDS:}
   briefing:
+    timezone: ${BRIEFING_TIMEZONE:Asia/Ho_Chi_Minh}
     morning-cron: ${MORNING_BRIEFING_CRON:0 30 7 * * *}   # 07:30 AM every day
     evening-cron: ${EVENING_SUMMARY_CRON:0 30 21 * * *}   # 09:30 PM (21:30) every day

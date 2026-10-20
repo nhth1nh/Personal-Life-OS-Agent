@@ -28,6 +28,7 @@ services:
       postgres:
         condition: service_healthy
     environment:
+      TZ: ${TZ:-Asia/Ho_Chi_Minh}
       SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/${POSTGRES_DB:-ploa}
       SPRING_DATASOURCE_USERNAME: ${POSTGRES_USER:-ploa}
       SPRING_DATASOURCE_PASSWORD: ${POSTGRES_PASSWORD:-changeme}
@@ -59,6 +60,7 @@ services:
     depends_on:
       - backend
     environment:
+      TZ: ${TZ:-Asia/Ho_Chi_Minh}
       GARMIN_EMAIL: ${GARMIN_EMAIL}
       GARMIN_PASSWORD: ${GARMIN_PASSWORD}
       GARMIN_PULL_TIME: ${GARMIN_PULL_TIME:-06:30}

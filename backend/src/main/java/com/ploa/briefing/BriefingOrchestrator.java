@@ -99,13 +99,13 @@ public class BriefingOrchestrator {
         }
     }
 
-    // ── Morning Briefing (07:30 AM) ───────────────────────────────────────────
-
-    @Scheduled(cron = "${ploa.briefing.morning-cron:${ploa.briefing.cron:0 30 7 * * *}}")
+    // ── Morning Briefing (07:30 AM Asia/Ho_Chi_Minh) ──────────────────────────
+    @Scheduled(cron = "${ploa.briefing.morning-cron:${ploa.briefing.cron:0 30 7 * * *}}",
+               zone = "${ploa.briefing.timezone:Asia/Ho_Chi_Minh}")
     public void sendMorningBriefing() {
         log.info("Morning briefing scheduled trigger");
         try {
-            LocalDate today = LocalDate.now();
+            LocalDate today = temporalContext.currentDate();
             DailyBriefingContext ctx = new DailyBriefingContext(
                     today,
                     healthService.computeReadiness(today),
@@ -122,7 +122,7 @@ public class BriefingOrchestrator {
     }
 
     public String generateBriefingPreview() {
-        LocalDate today = LocalDate.now();
+        LocalDate today = temporalContext.currentDate();
         DailyBriefingContext ctx = new DailyBriefingContext(
                 today,
                 healthService.computeReadiness(today),
@@ -136,15 +136,16 @@ public class BriefingOrchestrator {
         String context = buildMorningContextString(ctx);
 
         return chatClient.prompt()
+                .advisors(a -> a.param("operation", "briefing_morning"))
                 .system(SYSTEM_PROMPT_MORNING)
                 .user(context)
                 .call()
                 .content();
     }
 
-    // ── Evening Summary (09:30 PM / 21:30) ────────────────────────────────────
-
-    @Scheduled(cron = "${ploa.briefing.evening-cron:0 30 21 * * *}")
+    // ── Evening Summary (09:30 PM / 21:30 Asia/Ho_Chi_Minh) ──────────────────
+    @Scheduled(cron = "${ploa.briefing.evening-cron:0 30 21 * * *}",
+               zone = "${ploa.briefing.timezone:Asia/Ho_Chi_Minh}")
     public void sendEveningSummary() {
         log.info("Evening summary scheduled trigger (21:30)");
         try {
@@ -157,7 +158,7 @@ public class BriefingOrchestrator {
     }
 
     public String generateEveningSummaryPreview() {
-        LocalDate today = LocalDate.now();
+        LocalDate today = temporalContext.currentDate();
         HealthMetric health = healthService.getMetricsForDate(today);
         ReadinessResult readiness = healthService.computeReadiness(today);
         WeightEmaResult weight = healthService.computeWeightEma();
@@ -169,6 +170,7 @@ public class BriefingOrchestrator {
         String context = buildEveningContextString(today, health, readiness, weight, burnRate, todayTxs, todaySpent, profile);
 
         return chatClient.prompt()
+                .advisors(a -> a.param("operation", "briefing_evening"))
                 .system(SYSTEM_PROMPT_EVENING)
                 .user(context)
                 .call()

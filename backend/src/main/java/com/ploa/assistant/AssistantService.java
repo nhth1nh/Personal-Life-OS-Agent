@@ -83,6 +83,7 @@ public class AssistantService {
 
         // 6. Synthesize the conversational response
         String reply = chatClient.prompt()
+                .advisors(a -> a.param("operation", "assistant_synthesis"))
                 .system(systemPrompt)
                 .user(userMessage)
                 .call()
@@ -95,11 +96,16 @@ public class AssistantService {
     }
 
     private ToolPlan planToolExecution(String userMessage, List<UserMemory> preferences, List<ChatMessage> history) {
+        // Fast-path: Skip planner LLM call for conversational pleasantries, greetings, or acknowledgments
+        if (shouldSkipToolPlanning(userMessage)) {
+            log.info("Tool planning fast-path: zero tools needed for '{}'", userMessage);
+            return new ToolPlan(Collections.emptyList(), "today", null);
+        }
+
         StringBuilder historyContext = new StringBuilder();
         if (history != null && history.size() > 1) {
             historyContext.append("=== RECENT CONVERSATION CONTEXT (Prior Turns) ===\n");
-            // Exclude the last message which is the current userMessage just recorded
-            int limit = Math.min(history.size() - 1, 6);
+            int limit = Math.min(history.size() - 1, 4);
             int start = (history.size() - 1) - limit;
             for (int i = start; i < history.size() - 1; i++) {
                 ChatMessage m = history.get(i);
@@ -115,65 +121,32 @@ public class AssistantService {
                 %s
 
                 %sAVAILABLE TOOLS:
-                - "syncGarminData": Trigger an immediate live sync with Garmin Connect to pull up-to-the-second biometrics from the user's Garmin watch (steps, active calories, Body Battery, stress, heart rate). Call this ONLY when the user explicitly requests to sync, update, or refresh live data from their watch.
-                - "getDailyHealth": Physical biometrics (steps, distance, active/total kcal, active time, body battery, stress, heart rate) for a date. Date parameter can be "today", "yesterday", or "YYYY-MM-DD".
+                - "syncGarminData": Trigger live sync with Garmin Connect. Call ONLY when user explicitly asks to sync or refresh watch data.
+                - "getDailyHealth": Physical biometrics (steps, distance, kcal, active time, body battery, stress, heart rate).
                 - "getHealthReadiness": Recovery readiness, overnight HRV, 30-day baseline Z-scores, recovery level.
-                - "getSleepAnalysis": Sleep duration, deep/light/REM stages, sleep debt against target.
+                - "getSleepAnalysis": Sleep duration, deep/light/REM stages, sleep debt.
                 - "getWeightTrend": Latest weight, 7-day EMA trend, distance to target weight.
                 - "getFinancialStatus": Monthly budget, MTD spend, daily burn rate, safe daily allowance, savings rate.
                 - "getRecentTransactions": List of recent individual expense transactions.
-                - "getPendingTransactions": List of unconfirmed or pending draft transactions awaiting user confirmation.
-                - "saveUserMemory": Persist permanent, enduring profile facts or long-term preferences that provide persistent context across future sessions (user identity/name, communication style, pronouns, dietary rules, fixed budget limits, enduring goals, explicit save instructions).
+                - "getPendingTransactions": List of unconfirmed or pending draft transactions.
+                - "saveUserMemory": Persist permanent profile facts (user identity/name, communication style, pronouns, dietary rules, fixed budget limits, enduring goals, explicit save instructions).
 
                 RULES:
-                1. TEMPORAL GROUNDING: Always evaluate relative time tokens ("today", "yesterday", "last night", "this morning", "tonight", "right now") against CURRENT TEMPORAL CONTEXT above.
-                2. "syncGarminData" TRIGGER: If the user explicitly asks to sync, update, or refresh data from their Garmin watch/tracker (e.g. "sync my watch", "refresh my steps", "update data from watch"), include "syncGarminData".
-                3. "saveUserMemory" TRIGGER (HIGH THRESHOLD - ONLY FOR ENDURING PROFILE CONTEXT):
-                   Include "saveUserMemory" in "tools" and populate the "memory" field ONLY when the user communicates durable, long-term personal context needed across future conversations:
-                   - Profile & Identity: User's name, nickname, profession, age (e.g., "My name is Alex", "I work as a software engineer", "Call me Sam"). Set category="PROFILE".
-                   - Interaction Persona & Style: How to address them, pronouns, tone, language rules (e.g., "Address me casually", "speak informally", "always reply in English", "be concise"). Set category="PERSONA" or "PREFERENCE".
-                   - Enduring Rules & Constraints: Permanent dietary restrictions (e.g., "I am vegetarian", "allergic to peanuts"), fixed monthly financial budgets (e.g., "monthly budget is 15M VND"), or major milestone athletic goals (e.g., "target 42km marathon in December"). Set category="DIET" | "FINANCE" | "FITNESS" | "GOAL".
-                   - Explicit Memory Requests: When user explicitly commands to remember or note down ("remember that...", "keep in mind that...", "take note that..."). Set appropriate category.
-
-                4. "saveUserMemory" STRICT PROHIBITIONS (NEVER SAVE TO MEMORY):
-                   - NEVER save daily routines, workplace habits, office lunches, or schedules (e.g., "I eat company lunch on working days", "I eat out on Fridays", "I usually nap 30m", "I work from 9 to 5"). These are casual chitchat or conversational context, NOT permanent profile memories!
-                   - NEVER save answers to conversational questions (e.g. replying to what they are eating today, where they have lunch, how their day is going).
-                   - NEVER save single-occurrence daily activities, logs, or events (e.g., "I napped for 30 minutes at noon", "I ran 5km today", "just finished lunch", "bought coffee for $3", "just woke up"). These are temporary daily activities or conversation remarks, NOT permanent user profile attributes!
-                   - NEVER save transient states, momentary moods, or physical feelings (e.g., "I am tired", "bored today", "sleepy", "starting work now").
-                   - NEVER save user questions, inquiries, or clarifications (e.g., "What should I call you?", "Why did you say that?", "Can you check my sleep?", "Do you remember me?"). Questions are never memories!
-                   - NEVER save conversational follow-ups or dialog flow. Conversation history already maintains the dialog context; saveUserMemory is strictly for durable database persistence across future sessions.
-                   - GOLDEN RULE: When the user is simply chatting, answering a question, or describing their daily routine without saying "remember this", DO NOT save. Return {"tools": []}.
-                   - If in doubt, DO NOT call "saveUserMemory".
-
-                5. ZERO-TOOL DEFAULT ({"tools": []}):
-                   Return {"tools": []} whenever the user is:
-                   - Having normal conversation or chitchat (e.g., greetings, thanking, acknowledging: "okay", "thanks", "got it").
-                   - Answering or discussing daily activities, workplace lunches, meals, or schedules.
-                   - Discussing, reacting to, or commenting on recent conversation context (e.g., "I took a 30m nap at noon", "Is that healthy?", "Sounds good").
-                   - Asking general advice, opinions, or conceptual knowledge that doesn't require fetching user database records (e.g., "How long should a power nap be?", "How can I run faster?").
-                   - Stating transient daily updates that don't need any tool execution.
-
-                6. DATE RESOLUTION:
-                   - If the user asks about past physical activity ("yesterday", "last night"), set date="yesterday".
-                   - If the user asks about current physical activity ("today", "now"), set date="today".
-                   - If a calendar date is specified, set date="YYYY-MM-DD".
-
-                7. DOMAIN ISOLATION: Only select data tools relevant to the domain (do not select finance for health queries, or health for finance queries).
+                1. TEMPORAL GROUNDING: Evaluate relative dates ("today", "yesterday", "last night") against CURRENT TEMPORAL CONTEXT.
+                2. "saveUserMemory": Trigger ONLY when user explicitly commands to remember an enduring fact or sets permanent profile context (e.g. name, permanent diet/allergy, fixed monthly budget). Do NOT save casual daily lunches, transient moods, or normal chatting.
+                3. ZERO-TOOL DEFAULT ({"tools": []}): Return {"tools": []} for greetings, acknowledgments, casual conversation, advice, or questions not needing user database records.
+                4. DATE RESOLUTION: If the user asks about past physical activity ("yesterday", "last night"), set date="yesterday". Otherwise set date="today" or "YYYY-MM-DD".
 
                 OUTPUT FORMAT: Strict JSON only:
-                - If tools are needed:
-                  {
-                    "tools": ["saveUserMemory"],
-                    "date": "today" | "yesterday" | "YYYY-MM-DD",
-                    "memory": {"category": "PROFILE|PERSONA|PREFERENCE|FITNESS|DIET|FINANCE|GOAL", "key": "...", "value": "..."}
-                  }
-                  NOTE: "tools" MUST be a flat JSON array of strings (e.g. ["saveUserMemory"]), NEVER an array of objects.
-                - If no tools are needed:
+                - If tools needed:
+                  {"tools": ["toolName"], "date": "today" | "yesterday" | "YYYY-MM-DD", "memory": {"category": "PROFILE|PERSONA|PREFERENCE|FITNESS|DIET|FINANCE|GOAL", "key": "...", "value": "..."}}
+                - If no tools needed:
                   {"tools": []}
                 """.formatted(temporalContext.getFormattedPromptContext(), historyContext.toString());
 
         try {
             String rawJson = chatClient.prompt()
+                    .advisors(a -> a.param("operation", "assistant_planner"))
                     .system(plannerPrompt)
                     .user(userMessage)
                     .call()
@@ -289,45 +262,37 @@ public class AssistantService {
             sb.append("=========================================\n\n");
         }
 
-        // 2. Selective Grounding Data (Only when retrieved!)
+        // 2. Selective Grounding Data (compact JSON to minimize token waste)
         if (!groundingData.isEmpty()) {
             sb.append("=== RETRIEVED GROUNDING DATA ===\n");
             try {
-                sb.append(MAPPER.writerWithDefaultPrettyPrinter().writeValueAsString(groundingData));
+                sb.append(MAPPER.writeValueAsString(groundingData));
             } catch (Exception e) {
                 sb.append(groundingData);
             }
             sb.append("\n================================\n\n");
         }
 
-        // 3. Recent Conversation History (excluding the message just received)
+        // 3. Recent Conversation History (last 4 prior turns to keep context tight)
         if (history != null && history.size() > 1) {
             sb.append("=== RECENT CONVERSATION HISTORY ===\n");
-            for (int i = 0; i < history.size() - 1; i++) {
+            int limit = Math.min(history.size() - 1, 4);
+            int start = (history.size() - 1) - limit;
+            for (int i = start; i < history.size() - 1; i++) {
                 ChatMessage m = history.get(i);
                 sb.append(m.getRole().toUpperCase()).append(": ").append(m.getContent()).append("\n");
             }
             sb.append("===================================\n\n");
         }
 
-        // 4. Behavioral Guidelines
+        // 4. Behavioral Guidelines (streamlined to reduce prompt tokens)
         sb.append("""
                 BEHAVIOR GUIDELINES:
-                1. STRICTLY ADHERE to all rules, personas, forms of address, pronouns, tone instructions, and life preferences specified in "USER PROFILE & LONG-TERM MEMORIES" above (e.g. if the user asked to be addressed with specific pronouns or style in any language, you MUST strictly use that style).
-                2. Answer FREELY, naturally, and conversationally based strictly on what the user is asking.
-                3. You are NOT constrained to any rigid format or pre-set template.
-                4. The retrieved data above is your single source of truth for the user's real numbers. Never invent or falsify metrics.
-                5. If specific data was retrieved for 'yesterday' or another date, answer accurately for that requested date!
-                6. If a new memory was saved during this turn (present in RETRIEVED GROUNDING DATA as "memory_saved"), acknowledge it naturally and confirm you will remember it.
-                7. MATCH THE USER'S LANGUAGE AND TONE:
-                   - If asked in Vietnamese, respond in natural Vietnamese.
-                   - If the user uses casual or informal tone, match their casual, candid vibe naturally.
-                   - If asked in English, reply in English.
-                8. Format cleanly using standard Markdown (*bold*, lists, emojis). Avoid unclosed formatting markers.
-                9. REAL-TIME TEMPORAL AWARENESS:
-                   - You are strictly aware of the exact real-time timestamp, date, day of week, and time of day (%s, %s) specified in "CURRENT TEMPORAL CONTEXT" at the top of the prompt.
-                   - Always align greetings (e.g. good morning, good afternoon, good evening), recommendations, and commentary on meals, sleep, or workouts with the current time of day.
-                   - Relative temporal references ("today", "yesterday", "last night", "this morning", "tonight", "right now", "earlier") MUST be interpreted against this exact timestamp.
+                1. Single Source of Truth: Use RETRIEVED GROUNDING DATA for all metrics. Never invent or falsify numbers.
+                2. User Persona: Strictly adhere to all address forms, pronouns, and preferences in USER PROFILE.
+                3. Language & Tone: Match the user's language (natural Vietnamese or English) and conversational vibe.
+                4. Temporal Awareness: Interpret relative dates and greetings against CURRENT TEMPORAL CONTEXT (%s, %s).
+                5. Formatting: Format cleanly using standard Markdown (*bold*, lists, emojis).
                 """.formatted(temporalContext.getTimeOfDay(), temporalContext.getDayOfWeek()));
 
         return sb.toString();
@@ -363,6 +328,47 @@ public class AssistantService {
         }
 
         return new ToolPlan(tools, date, null);
+    }
+
+    public boolean shouldSkipToolPlanning(String text) {
+        if (text == null || text.isBlank()) {
+            return true;
+        }
+        String clean = text.trim().toLowerCase();
+        // Remove trailing punctuation
+        clean = clean.replaceAll("[?!.,;:~]+$", "").trim();
+
+        // Direct greetings & pleasantries
+        Set<String> trivialTokens = Set.of(
+                "hi", "hello", "hey", "alo", "chào", "chào bạn", "good morning", "good evening", "good afternoon",
+                "thanks", "thank you", "cảm ơn", "cảm ơn bạn", "tks", "thx",
+                "ok", "okay", "okie", "được rồi", "rõ rồi", "yes", "no", "vâng", "dạ", "uh",
+                "nice", "great", "cool", "tuyệt", "tuyệt vời", "bye", "tạm biệt",
+                "who are you", "bạn là ai", "what can you do", "bạn làm được gì"
+        );
+        if (trivialTokens.contains(clean)) {
+            return true;
+        }
+
+        // Short chit-chat without data or memory triggers
+        return clean.length() < 25 && !hasDataOrMemoryKeywords(clean);
+    }
+
+    private boolean hasDataOrMemoryKeywords(String clean) {
+        String[] keywords = {
+                "sync", "watch", "garmin", "step", "bước", "run", "chạy", "walk", "đi bộ", "calorie", "kcal",
+                "heart", "tim", "hrv", "battery", "stress", "sleep", "ngủ", "nap", "readiness", "recovery",
+                "hồi phục", "weight", "cân", "kg", "scale",
+                "money", "tiền", "spend", "tiêu", "spent", "budget", "ngân sách", "burn", "expense", "cost",
+                "chi phí", "bill", "hóa đơn", "rent", "vnd", "dong", "đồng", "k", "đ",
+                "remember", "nhớ", "lưu", "tên tôi", "tên là", "prefer", "dị ứng", "allergic", "mục tiêu", "target"
+        };
+        for (String kw : keywords) {
+            if (clean.contains(kw)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private String cleanJson(String raw) {

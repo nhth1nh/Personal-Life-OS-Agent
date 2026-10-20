@@ -3,6 +3,7 @@ package com.ploa.ai;
 import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.ploa.ai.dto.OcrResult;
+import com.ploa.ai.util.ImageOptimizer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.ai.chat.client.ChatClient;
@@ -57,12 +58,40 @@ public class VisionOcrService {
             - Return ONLY the JSON object, no markdown, no explanation.
             """;
 
+    private static final String TEXT_EXPENSE_SYSTEM_PROMPT = """
+            You are a fast financial expense parser. Extract the transaction into JSON.
+            Return ONLY a valid JSON object:
+            {
+              "document_type": "UNKNOWN",
+              "source_platform": "manual",
+              "invoice_number": null,
+              "transaction_date": "YYYY-MM-DD" | null,
+              "transaction_time": null,
+              "total_amount": <integer in VND, no decimals>,
+              "currency": "VND",
+              "category": "Food" | "Groceries" | "Transport" | "Bills" | "Shopping" | "Sports" | "Other",
+              "spend_type": "FIXED" | "DISCRETIONARY",
+              "merchant": "<merchant name or null>",
+              "note": "<brief description>",
+              "confidence": 1.0,
+              "line_items": null
+            }
+            Rules:
+            - Amounts in VND: "50k" = 50000, "1.5m" = 1500000.
+            - Bills/Rent/Subscriptions/Utilities = FIXED. Everything else = DISCRETIONARY.
+            - Return ONLY the JSON object, no markdown.
+            """;
+
     private final ChatClient chatClient;
     private final TemporalContext temporalContext;
+    private final ImageOptimizer imageOptimizer;
 
-    public VisionOcrService(ChatClient.Builder chatClientBuilder, TemporalContext temporalContext) {
+    public VisionOcrService(ChatClient.Builder chatClientBuilder,
+                            TemporalContext temporalContext,
+                            ImageOptimizer imageOptimizer) {
         this.chatClient = chatClientBuilder.build();
         this.temporalContext = temporalContext;
+        this.imageOptimizer = imageOptimizer;
     }
 
     /**
@@ -74,17 +103,19 @@ public class VisionOcrService {
      * @return parsed OcrResult, or fallback with nulls on failure
      */
     public OcrResult extractFromImage(byte[] imageBytes, String mimeType) {
-        log.info("Running Vision OCR on image bytes (size: {} bytes, mime: {})",
+        log.info("Running Vision OCR on image bytes (original size: {} bytes, mime: {})",
                 imageBytes != null ? imageBytes.length : 0, mimeType);
         if (imageBytes == null || imageBytes.length == 0) {
             log.warn("Empty image bytes provided to Vision OCR");
             return fallbackResult("Empty image");
         }
         try {
+            // Optimize image dimensions and compression to save vision tokens & bandwidth
+            byte[] processedBytes = imageOptimizer.optimizeForOcr(imageBytes, mimeType);
             MimeType type = (mimeType != null && !mimeType.isBlank())
                     ? MimeTypeUtils.parseMimeType(mimeType)
                     : MimeTypeUtils.IMAGE_JPEG;
-            Media media = new Media(type, new ByteArrayResource(imageBytes));
+            Media media = new Media(type, new ByteArrayResource(processedBytes));
             return executeOcr(media);
         } catch (Exception e) {
             log.error("OCR extraction failed: {}", e.getMessage(), e);
@@ -121,6 +152,7 @@ public class VisionOcrService {
                 .build();
 
         String raw = chatClient.prompt()
+                .advisors(a -> a.param("operation", "ocr_image"))
                 .system(OCR_SYSTEM_PROMPT)
                 .messages(userMessage)
                 .call()
@@ -180,6 +212,7 @@ public class VisionOcrService {
         );
         try {
             String raw = chatClient.prompt()
+                    .advisors(a -> a.param("operation", "ocr_refine"))
                     .system(OCR_SYSTEM_PROMPT)
                     .user(prompt)
                     .call()
@@ -214,7 +247,8 @@ public class VisionOcrService {
                 """.formatted(temporalContext.getFormattedPromptContext(), text);
         try {
             String raw = chatClient.prompt()
-                    .system(OCR_SYSTEM_PROMPT)
+                    .advisors(a -> a.param("operation", "ocr_text"))
+                    .system(TEXT_EXPENSE_SYSTEM_PROMPT)
                     .user(prompt)
                     .call()
                     .content();
