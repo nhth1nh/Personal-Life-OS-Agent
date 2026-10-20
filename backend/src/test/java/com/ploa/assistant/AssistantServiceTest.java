@@ -93,4 +93,30 @@ class AssistantServiceTest {
         assertThat(plan.memory().key()).isEqualTo("lunch_routine_axon_ivy");
         assertThat(plan.memory().value()).isEqualTo("Company lunch Monday through Thursday");
     }
+
+    @Test
+    @DisplayName("Should skip tool planning for greetings, acknowledgments, and pleasantries")
+    void shouldSkipToolPlanningForPleasantries() {
+        AssistantService assistantService = new AssistantService(null, null, null, org.mockito.Mockito.mock(org.springframework.ai.chat.client.ChatClient.Builder.class));
+
+        assertThat(assistantService.shouldSkipToolPlanning("Hello")).isTrue();
+        assertThat(assistantService.shouldSkipToolPlanning("Chào bạn!")).isTrue();
+        assertThat(assistantService.shouldSkipToolPlanning("thanks")).isTrue();
+        assertThat(assistantService.shouldSkipToolPlanning("cảm ơn nha")).isTrue();
+        assertThat(assistantService.shouldSkipToolPlanning("ok")).isTrue();
+        assertThat(assistantService.shouldSkipToolPlanning("got it")).isTrue();
+        assertThat(assistantService.shouldSkipToolPlanning("Bạn là ai?")).isTrue();
+    }
+
+    @Test
+    @DisplayName("Should NOT skip tool planning when user asks for metrics, tools, or memory")
+    void shouldNotSkipToolPlanningForDomainQueries() {
+        AssistantService assistantService = new AssistantService(null, null, null, org.mockito.Mockito.mock(org.springframework.ai.chat.client.ChatClient.Builder.class));
+
+        assertThat(assistantService.shouldSkipToolPlanning("Hôm nay tôi chạy được bao nhiêu bước?")).isFalse();
+        assertThat(assistantService.shouldSkipToolPlanning("How much did I spend today?")).isFalse();
+        assertThat(assistantService.shouldSkipToolPlanning("Check my sleep from last night")).isFalse();
+        assertThat(assistantService.shouldSkipToolPlanning("Sync my watch")).isFalse();
+        assertThat(assistantService.shouldSkipToolPlanning("Remember that my name is Alex")).isFalse();
+    }
 }

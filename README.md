@@ -60,6 +60,7 @@ flowchart TD
 > - [💰 Personal Finance Ledger & Burn Rate](docs/finance.md)
 > - [🤖 Life OS AI Assistant](docs/assistance.md)
 > - [👁️ Vision OCR & Multimodal Ingestion](docs/ai-ocr.md)
+> - [🔍 AI Audit & Model Observability](docs/ai-audit.md)
 > - [📱 Telegram Bot Gateway](docs/telebot.md)
 
 ### 1. 🏥 Passive Physical Health & Recovery Tracking

@@ -43,6 +43,7 @@ public record PloaProperties(
 
     public record Briefing(
             String cron,
+            @DefaultValue("Asia/Ho_Chi_Minh") String timezone,
             @DefaultValue("0 30 7 * * *") String morningCron,
             @DefaultValue("0 30 21 * * *") String eveningCron
     ) {}
