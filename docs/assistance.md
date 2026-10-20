@@ -67,11 +67,18 @@ To prevent hallucinations, over-fetching, and redundant calls, the Planner execu
    - Inquiries referencing calendar dates resolve to `YYYY-MM-DD`.
 3. **Cross-Domain Separation**: Financial questions never query health tools; workout questions never query financial ledgers.
 4. **Persistent Memory Gate (`saveUserMemory`)**:
-   - Explicit persona, tone, nickname, language, or pronoun rules (e.g. *"use informal pronouns in Vietnamese"*, *"call me Boss"*, *"speak casually"*).
-   - Long-term dietary habits and constraints (e.g. *"I am vegetarian"*, *"lactose intolerant"*).
-   - Athletic & fitness goals (e.g. *"Target 21km half-marathon in December"*).
-   - Monthly financial budgets or savings rules.
-   - General instructions beginning with *"From now on..."*, *"Always remember that..."*, or *"Note that..."*.
+   - **Allowed Writes (High-Threshold Enduring Facts Only)**:
+     - Profile & Identity (e.g. name, nickname, profession, age: *"My name is Alex"*, *"Call me Sam"*).
+     - Explicit persona, tone, nickname, language, or pronoun rules (e.g. *"address me casually"*, *"call me Boss"*, *"speak informally"*).
+     - Long-term dietary rules and constraints (e.g. *"I am vegetarian"*, *"lactose intolerant"*).
+     - Athletic & fitness goals (e.g. *"Target 21km half-marathon in December"*).
+     - Monthly financial budgets or savings rules (e.g. *"Monthly spending budget is 15M VND"*).
+     - Explicit memory commands beginning with *"From now on..."*, *"Always remember that..."*, or *"Take note that..."*.
+   - **Strict Abuse Prohibitions (NEVER saved to memory)**:
+     - Transient daily events, activity logs, or single actions (e.g. *"I took a 30m nap at noon"*, *"I ran 5km today"*, *"Just had lunch"*).
+     - Momentary physical states, moods, or feelings (e.g. *"I am feeling tired"*, *"Sleepy right now"*).
+     - User questions or clarifications (e.g. *"What should I call you?"*, *"Can you inspect my sleep?"*).
+     - Dialogue flow or commentary on previous turns (handled strictly by short-term conversation memory).
 
 ---
 
@@ -102,7 +109,7 @@ Every model request is automatically enriched with real-time temporal grounding:
 
 ### 2. Long-Term Personalization Memory
 - Table: `user_memories` (`category`, `memory_key`, `memory_value`, `source`, `created_at`, `updated_at`).
-- Categories: `PREFERENCE`, `PERSONA`, `FITNESS`, `DIET`, `FINANCE`, `LIFESTYLE`, `GOAL`, `GENERAL`.
+- Categories: `PROFILE`, `PERSONA`, `PREFERENCE`, `FITNESS`, `DIET`, `FINANCE`, `GOAL`.
 - **Dual Write Path**:
   - **Explicit User API**: `POST /api/v1/memory`
   - **Conversational Memory**: Model autonomously extracts and saves facts using `saveUserMemory`.
