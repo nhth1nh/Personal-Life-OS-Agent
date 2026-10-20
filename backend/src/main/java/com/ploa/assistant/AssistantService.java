@@ -96,6 +96,7 @@ public class AssistantService {
                 Today's date is %s.
                 
                 AVAILABLE TOOLS:
+                - "syncGarminData": Trigger an immediate live sync with Garmin Connect to pull up-to-the-second biometrics from the user's Garmin watch (steps, active calories, Body Battery, stress, heart rate). Call this ONLY when the user explicitly requests to sync, update, or refresh live data from their watch.
                 - "getDailyHealth": Physical biometrics (steps, distance, active/total kcal, active time, body battery, stress, heart rate) for a date. Date parameter can be "today", "yesterday", or "YYYY-MM-DD".
                 - "getHealthReadiness": Recovery readiness, overnight HRV, 30-day baseline Z-scores, recovery level.
                 - "getSleepAnalysis": Sleep duration, deep/light/REM stages, sleep debt against target.
@@ -105,17 +106,18 @@ public class AssistantService {
                 - "saveUserMemory": CRITICAL for personalization. Call this whenever the user shares or instructs any long-term preference, persona/tone rule, pronoun/form of address, nickname, communication style, dietary rule, fitness goal, or personal profile fact.
                 
                 RULES:
-                1. "saveUserMemory" TRIGGER: Call "saveUserMemory" whenever the user:
-                   - Instructs how to address them, persona, tone, language, or pronouns (e.g., "xưng hô mày tao", "call me X", "speak informally", "from now on always...").
+                1. "syncGarminData" TRIGGER: If the user explicitly asks to sync, update, or refresh data from their Garmin watch/tracker (e.g. "sync my watch", "refresh my steps", "update data from watch"), include "syncGarminData".
+                2. "saveUserMemory" TRIGGER: Call "saveUserMemory" whenever the user:
+                   - Instructs how to address them, persona, tone, language, or pronouns (e.g., "call me X", "speak informally", "from now on always...").
                    - Shares personal profile info (name, job, age, habits).
                    - States a permanent rule, goal, or constraint (e.g., "I am vegetarian", "target 21km in Dec", "monthly budget 15M").
-                   - Explicitly asks to remember or note something down ("remember that...", "nhớ là...").
+                   - Explicitly asks to remember or note something down ("remember that...", "keep in mind...").
                    Set category: "PREFERENCE" | "PERSONA" | "FITNESS" | "DIET" | "FINANCE" | "LIFESTYLE" | "GOAL" | "GENERAL".
-                2. Only return NO tools ({"tools": []}) if the message is purely transient casual chitchat or general knowledge questions without ANY user instructions, preferences, or personal metrics (e.g. "hello", "how are you today?", "what causes insomnia?").
-                3. If the user asks about past physical activity ("yesterday", "hôm qua", "last night"), set date="yesterday".
-                4. If the user asks about current physical activity ("today", "hôm nay", "now"), set date="today".
-                5. If a calendar date is specified, set date="YYYY-MM-DD".
-                6. Only select data tools relevant to the domain (do not select finance for health queries, or health for finance queries).
+                3. Only return NO tools ({"tools": []}) if the message is purely transient casual chitchat or general knowledge questions without ANY user instructions, preferences, or personal metrics (e.g. "hello", "how are you today?", "what causes insomnia?").
+                4. If the user asks about past physical activity ("yesterday", "last night"), set date="yesterday".
+                5. If the user asks about current physical activity ("today", "now"), set date="today".
+                6. If a calendar date is specified, set date="YYYY-MM-DD".
+                7. Only select data tools relevant to the domain (do not select finance for health queries, or health for finance queries).
                 
                 OUTPUT FORMAT: Strict JSON only:
                 {
@@ -156,6 +158,7 @@ public class AssistantService {
         for (String tool : plan.tools()) {
             try {
                 switch (tool) {
+                    case "syncGarminData" -> data.put("live_garmin_sync", assistantTools.syncGarminData());
                     case "getDailyHealth" -> data.put("daily_health_" + targetDate, assistantTools.getDailyHealth(targetDate));
                     case "getHealthReadiness" -> data.put("readiness_" + targetDate, assistantTools.getHealthReadiness(targetDate));
                     case "getSleepAnalysis" -> data.put("sleep_analysis", assistantTools.getSleepAnalysis());
@@ -224,7 +227,7 @@ public class AssistantService {
         // 4. Behavioral Guidelines
         sb.append("""
                 BEHAVIOR GUIDELINES:
-                1. STRICTLY ADHERE to all rules, personas, forms of address, pronouns, tone instructions, and life preferences specified in "USER PROFILE & LONG-TERM MEMORIES" above (e.g. if the user asked to be addressed with specific pronouns like mày-tao in Vietnamese, you MUST strictly use that style).
+                1. STRICTLY ADHERE to all rules, personas, forms of address, pronouns, tone instructions, and life preferences specified in "USER PROFILE & LONG-TERM MEMORIES" above (e.g. if the user asked to be addressed with specific pronouns or style in any language, you MUST strictly use that style).
                 2. Answer FREELY, naturally, and conversationally based strictly on what the user is asking.
                 3. You are NOT constrained to any rigid format or pre-set template.
                 4. The retrieved data above is your single source of truth for the user's real numbers. Never invent or falsify metrics.
@@ -245,6 +248,9 @@ public class AssistantService {
         List<String> tools = new ArrayList<>();
         String date = t.contains("yesterday") || t.contains("last night") ? "yesterday" : "today";
 
+        if (t.contains("sync") || t.contains("refresh")) {
+            tools.add("syncGarminData");
+        }
         if (t.contains("run") || t.contains("walk") || t.contains("step") || t.contains("calorie") || t.contains("kcal")
                 || t.contains("activity") || t.contains("battery") || t.contains("stress") || t.contains("heart")) {
             tools.add("getDailyHealth");

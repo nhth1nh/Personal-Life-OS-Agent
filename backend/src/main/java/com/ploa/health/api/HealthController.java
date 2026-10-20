@@ -99,16 +99,11 @@ public class HealthController {
      */
     @PostMapping("/pull")
     public ResponseEntity<String> triggerGarminPull() {
-        try {
-            var rest = org.springframework.web.client.RestClient.create();
-            String res = rest.post()
-                    .uri("http://garmin-puller:8081/pull")
-                    .retrieve()
-                    .body(String.class);
-            return ResponseEntity.ok(res);
-        } catch (Exception e) {
-            log.error("Failed to trigger on-demand Garmin pull: {}", e.getMessage());
-            return ResponseEntity.status(500).body("{\"status\":\"error\",\"message\":\"" + e.getMessage() + "\"}");
+        boolean ok = healthService.triggerGarminPull();
+        if (ok) {
+            return ResponseEntity.ok("{\"status\":\"success\",\"message\":\"Garmin live sync completed\"}");
+        } else {
+            return ResponseEntity.status(500).body("{\"status\":\"error\",\"message\":\"Failed to trigger Garmin pull\"}");
         }
     }
 }

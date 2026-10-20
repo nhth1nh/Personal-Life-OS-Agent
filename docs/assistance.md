@@ -44,6 +44,7 @@ Every tool follows the **Single Responsibility Principle (SRP)**. Tools return d
 
 | Tool Name | Parameters | Scope & Responsibilities |
 |---|---|---|
+| `syncGarminData` | None | **Live Action Tool**: Triggers immediate on-demand synchronization with Garmin Connect via the sidecar (:8081/pull) and returns up-to-the-second biometrics. |
 | `getDailyHealth` | `date` (`"today"`, `"yesterday"`, or `"YYYY-MM-DD"`) | Retrieves physical biometrics for the target date: steps, distance, active kcal, total kcal, active minutes, Body Battery (current, high, low), stress scores, resting HR, min/max HR, and SpO2. |
 | `getHealthReadiness` | `date` (`"today"`, `"yesterday"`, or `"YYYY-MM-DD"`) | Evaluates recovery readiness: overnight HRV (rMSSD), 30-day baseline Z-scores, recovery level (`PRIME`, `NORMAL`, `FATIGUED`, `STRESSED`), and sleep debt. |
 | `getSleepAnalysis` | None | Retrieves sleep stage breakdown (deep, light, REM, total) and 7-day sleep duration trend. |
@@ -65,11 +66,11 @@ To prevent hallucinations, over-fetching, and redundant calls, the Planner execu
    - Inquiries referencing calendar dates resolve to `YYYY-MM-DD`.
 3. **Cross-Domain Separation**: Financial questions never query health tools; workout questions never query financial ledgers.
 4. **Persistent Memory Gate (`saveUserMemory`)**:
-   - Explicit persona, tone, nickname, language, or pronoun rules (e.g. *"xưng hô mày tao khi dùng tiếng Việt"*, *"call me Boss"*, *"speak casually"*).
+   - Explicit persona, tone, nickname, language, or pronoun rules (e.g. *"use informal pronouns in Vietnamese"*, *"call me Boss"*, *"speak casually"*).
    - Long-term dietary habits and constraints (e.g. *"I am vegetarian"*, *"lactose intolerant"*).
    - Athletic & fitness goals (e.g. *"Target 21km half-marathon in December"*).
    - Monthly financial budgets or savings rules.
-   - General instructions beginning with *"Từ bây giờ..."*, *"From now on..."*, or *"Remember that..."*.
+   - General instructions beginning with *"From now on..."*, *"Always remember that..."*, or *"Note that..."*.
 
 ---
 

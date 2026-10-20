@@ -104,4 +104,24 @@ public class HealthService {
     public HealthMetric getMetricsForDate(LocalDate date) {
         return repo.findById(date != null ? date : LocalDate.now()).orElse(null);
     }
+
+    /**
+     * Trigger an on-demand real-time pull from Garmin Connect via the puller sidecar.
+     *
+     * @return true if successful, false otherwise
+     */
+    public boolean triggerGarminPull() {
+        try {
+            var rest = org.springframework.web.client.RestClient.create();
+            rest.post()
+                    .uri("http://garmin-puller:8081/pull")
+                    .retrieve()
+                    .toBodilessEntity();
+            log.info("Garmin on-demand pull successfully completed");
+            return true;
+        } catch (Exception e) {
+            log.error("Failed to trigger on-demand Garmin pull: {}", e.getMessage());
+            return false;
+        }
+    }
 }

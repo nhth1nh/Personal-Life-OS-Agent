@@ -106,6 +106,13 @@ public class AssistantTools {
         );
     }
 
+    @Tool(description = "Trigger an immediate live synchronization with Garmin Connect to pull up-to-the-second biometrics from the user's Garmin watch (steps, active calories, Body Battery, stress, heart rate). Call this ONLY when the user explicitly asks to sync, refresh, or update data from their Garmin watch/tracker.")
+    public DailyHealthSummary syncGarminData() {
+        log.info("Assistant tool call: syncGarminData()");
+        healthService.triggerGarminPull();
+        return getDailyHealth("today");
+    }
+
     @Tool(description = "Get physical recovery readiness & nervous system strain for a date. Includes overnight HRV (rMSSD), resting heart rate, 30-day baseline Z-scores, recovery level (PRIME, NORMAL, FATIGUED, STRESSED), and sleep debt.")
     public ReadinessResult getHealthReadiness(
             @ToolParam(description = "Target date: 'today', 'yesterday', or 'YYYY-MM-DD'. Defaults to 'today'.", required = false) String date) {
