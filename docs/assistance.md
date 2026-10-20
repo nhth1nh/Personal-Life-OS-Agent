@@ -75,6 +75,21 @@ To prevent hallucinations, over-fetching, and redundant calls, the Planner execu
 
 ---
 
+## ⏰ Real-Time Temporal Context Awareness (`TemporalContext`)
+
+Every model request is automatically enriched with real-time temporal grounding:
+- **Full ISO Timestamp**: `2026-10-20T08:48:00+07:00`
+- **Current Date & Day of Week**: `2026-10-20 (Tuesday)`
+- **Current Time & Period**: `08:48:00 (Morning / Noon / Afternoon / Evening / Night)`
+- **Timezone**: `Asia/Ho_Chi_Minh (UTC+07:00)`
+
+### Conversational Alignment & Behavioral Benefits
+1. **Time-Aware Tone & Guidance**: The Assistant aligns greetings and advice with the exact time of day (e.g., suggesting wind-down routines at night vs morning workout readiness).
+2. **Relative Time Precision**: Queries referencing *"today"*, *"yesterday"*, *"last night"*, *"this morning"*, or *"earlier"* are resolved against real-time clock telemetry.
+3. **Tool Execution Accuracy**: The Tool Planner evaluates whether queries refer to completed past events or current ongoing progress.
+
+---
+
 ## 🧠 Memory Systems
 
 ### 1. Short-Term Multi-Turn Chat Memory

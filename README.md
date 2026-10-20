@@ -91,6 +91,7 @@ flowchart TD
   - *"Should I play high-intensity sports today?"*
   - *"How was my sleep recovery last night?"*
   - *"How much budget do I have left for the rest of the month?"*
+- **Real-Time Temporal Context Awareness**: Every LLM invocation (Assistant chat, Tool Planner, Vision OCR, Morning/Evening Briefings) receives exact real-time clock telemetry (ISO timestamp, date, day of week, time of day, and timezone), ensuring perfect conversational grounding for relative time queries (*"today"*, *"yesterday"*, *"last night"*, *"this morning"*).
 - **Automatic Intent Classification**:
   - Expense inputs (`50k coffee`, `120k groceries`) $\rightarrow$ routed to the structured expense logger.
   - General questions or conversation $\rightarrow$ routed to the AI Assistant, which answers based on your actual deterministic numbers.
