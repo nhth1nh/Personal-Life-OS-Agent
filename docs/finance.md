@@ -36,6 +36,10 @@ Transactions are persisted in PostgreSQL with the following schema:
 | `merchant` | String | Extracted or entered business name (e.g., Highlands Coffee, Grab, Shopee). |
 | `note` | String | Additional context or memo. |
 | `tx_date` | LocalDate | Date of expenditure. |
+| `tx_timestamp` | OffsetDateTime | Event timestamp printed on the bill (falls back to upload time). |
+| `invoice_number` | String | Printed invoice code, order ID, or banking transfer reference. |
+| `image_sha256` | String | SHA-256 hash of the receipt image for exact-match deduplication. |
+| `duplicate_warning` | String | Warning message if suspected duplicate detected; null if unique. |
 | `receipt_image_url`| String | Optional link to stored receipt image. |
 | `confirmed` | Boolean | `false` when held in draft state awaiting user validation; `true` once approved. |
 | `telegram_message_id`| Long | Links the transaction to the interactive Telegram message for in-place edits. |
@@ -69,12 +73,20 @@ The financial engine guarantees mathematical integrity without generative halluc
 
 ## 🎮 Interactive Telegram Workflow
 
-1. **Capture**: Sending a photo of a receipt or typing `50k coffee` triggers instant extraction and generates a draft transaction.
+1. **Capture & Deduplication**:
+   - Sending a receipt photo, document, or text (`50k coffee`) triggers instant OCR extraction.
+   - Evaluates multi-tier deduplication (exact image SHA-256, invoice number, and fuzzy amount+date+merchant match).
+   - If a potential duplicate is detected, a prominent warning is rendered on the draft card with a `[✅ Confirm Anyway]` override button.
 2. **Review Keyboard**:
-   - `[✅ Confirm]`: Sets `confirmed = true`. The transaction is immediately included in the burn rate engine.
-   - `[🔄 Toggle Type]`: Toggles spend type between `DISCRETIONARY` and `FIXED` in place.
-   - `[🗑️ Delete]`: Deletes the draft from PostgreSQL.
-3. **Pacing Inquiry**: Sending `/finance` outputs the current pacing overview:
+   - `[✅ Confirm]` (or `[✅ Confirm Anyway]`): Commits the transaction to the burn rate engine.
+   - `[✏️ Edit]`: Prompts user for natural language corrections.
+   - `[🔄 Toggle Type]`: In-place toggle between `DISCRETIONARY` and `FIXED`.
+   - `[🗑️ Delete]`: Discards the transaction and logs the discard event.
+3. **Conversational In-Place Refinement & One-Word Confirmation**:
+   - Users can swipe and directly reply to the transaction card with corrections (e.g. *"Amount is 45k, not 55k"*, *"Merchant is Starbucks"*, *"This is rent money this month"*).
+   - The refiner patches the draft, updates the superseded card (`🔄 Draft updated below ⬇️`), and posts the revised card with full interactive buttons at the bottom of the chat.
+   - Alternatively, users can confirm a pending draft by simply replying or sending *"done"*, *"confirm"*, *"ok"*, or *"yes"*.
+4. **Pacing Inquiry**: Sending `/finance` outputs the current pacing overview:
    - Days elapsed / remaining
    - MTD Total, Fixed, and Discretionary spend
    - Safe daily allowance vs current daily burn rate
@@ -89,3 +101,4 @@ The financial engine guarantees mathematical integrity without generative halluc
 | `GET` | `/api/v1/finance/transactions` | List confirmed and draft transactions for the current month. | `?limit=30` |
 | `POST` | `/api/v1/finance/transactions` | Manually record a transaction. | Request Body (`Transaction` JSON) |
 | `POST` | `/api/v1/finance/ocr` | Upload a receipt or bank transfer screenshot to extract and record. | Multipart form `file=@receipt.jpg` |
+| `GET` | `/api/v1/finance/ocr/metrics` | Retrieve OCR stability KPIs (acceptance rate, edit rate, discard rate, confidence). | None |

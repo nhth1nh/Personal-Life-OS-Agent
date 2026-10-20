@@ -159,6 +159,24 @@ public class AssistantTools {
                 .toList();
     }
 
+    @Tool(description = "Get pending draft transactions awaiting user confirmation or recently modified via receipt OCR.")
+    public List<TransactionSummary> getPendingTransactions() {
+        log.info("Assistant tool call: getPendingTransactions()");
+        List<Transaction> txs = financeService.getPendingTransactions();
+        return txs.stream()
+                .map(t -> new TransactionSummary(
+                        t.getTxDate(),
+                        t.getAmount(),
+                        t.getCurrency(),
+                        t.getCategory(),
+                        t.getSpendType(),
+                        t.getMerchant(),
+                        t.getNote(),
+                        t.isConfirmed()
+                ))
+                .toList();
+    }
+
     @Tool(description = "Get persistent user preferences, goals, dietary restrictions, and personal profile facts.")
     public List<UserMemory> getUserProfile() {
         log.info("Assistant tool call: getUserProfile()");

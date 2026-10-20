@@ -46,4 +46,16 @@ public interface TransactionRepository extends JpaRepository<Transaction, UUID> 
     List<Object[]> sumByCategoryBetween(@Param("from") LocalDate from, @Param("to") LocalDate to);
 
     List<Transaction> findByTelegramMsgId(Long telegramMsgId);
+
+    java.util.Optional<Transaction> findFirstByTelegramMsgId(Long telegramMsgId);
+
+    List<Transaction> findByConfirmedFalseOrderByCreatedAtDesc();
+
+    java.util.Optional<Transaction> findFirstByImageSha256(String imageSha256);
+
+    List<Transaction> findByInvoiceNumberIgnoreCaseAndMerchantIgnoreCase(String invoiceNumber, String merchant);
+
+    List<Transaction> findByAmountAndTxDateAndMerchantIgnoreCase(Long amount, LocalDate txDate, String merchant);
+
+    List<Transaction> findByAmountAndTxDate(Long amount, LocalDate txDate);
 }

@@ -33,20 +33,24 @@ The Vision model strictly adheres to the following structured entity schema:
 
 ```json
 {
-  "amount": 55000,
+  "document_type": "RECEIPT",
+  "source_platform": "manual",
+  "invoice_number": "HD-20261020-001",
+  "transaction_date": "2026-10-19",
+  "transaction_time": "14:32:00",
+  "total_amount": 55000,
   "currency": "VND",
-  "merchant": "Highlands Coffee",
   "category": "Food & Dining",
-  "spendType": "DISCRETIONARY",
-  "txDate": "2026-10-19",
+  "spend_type": "DISCRETIONARY",
+  "merchant": "Highlands Coffee",
   "note": "Iced milk coffee size L",
   "confidence": 0.95,
   "lineItems": [
     {
-      "item": "Large Iced Milk Coffee",
+      "name": "Large Iced Milk Coffee",
       "quantity": 1,
-      "unitPrice": 55000,
-      "totalPrice": 55000
+      "unit_price": 55000,
+      "total": 55000
     }
   ]
 }
@@ -77,6 +81,20 @@ HTTP 400 - Unsupported MIME type: application/octet-stream
   - `1.5tr` / `1.5m` $\rightarrow 1,500,000$ VND
   - Handles comma/dot thousands separators accurately (`50.000` vs `50,000`).
 
+### 3. Multi-Tier Bill Deduplication
+Prevents duplicate financial entries across three evaluation tiers:
+1. **Tier 1 (Exact Image SHA-256)**: Identifies identical uploaded image files.
+2. **Tier 2 (Invoice / Reference ID)**: Identifies same invoices or bank transfers photographed separately or from different channels (e.g. email invoice screenshot vs banking app screenshot).
+3. **Tier 3 (Fuzzy Triplet Match)**: Matches identical amount, transaction date, and merchant.
+- **User-Guided Resolution**: Instead of hard-blocking, the bot flags suspected duplicates with an explicit warning and offers `[✅ Confirm Anyway]` vs `[🗑️ Delete]`.
+
+### 4. Conversational In-Place Refinement & Seamless Confirmation
+If the OCR misreads an amount, merchant, or category:
+- **Natural Language Correction**: Users can swipe and directly reply to the Telegram card (e.g. *"Amount is 45k, not 55k"*, *"Category is Bills"*, or *"This is rent money this month"*), or tap `[✏️ Edit]` for guided input.
+- **Fresh Card Delivery**: The system updates the superseded message (`🔄 Draft updated below ⬇️`) and posts a new card with all interactive buttons directly at the bottom of the chat, keeping the `[✅ Confirm]` button visible and active.
+- **Conversational Confirmation**: Users can finalize the transaction by simply typing or replying *"done"*, *"confirm"*, *"ok"*, *"yes"*, or *"save"*, bypassing button clicks entirely.
+- **Audit Logging**: Every edit instruction is logged in `ocr_audits` with `user_notes` and an incremented `edit_count` to maintain empirical OCR accuracy metrics.
+
 ---
 
 ## 📡 REST API Reference
@@ -84,3 +102,4 @@ HTTP 400 - Unsupported MIME type: application/octet-stream
 | Method | Endpoint | Description | Content-Type |
 |---|---|---|---|
 | `POST` | `/api/v1/finance/ocr` | Upload an image file for immediate extraction and draft persistence. | `multipart/form-data` with parameter `file=@receipt.jpg` |
+| `GET` | `/api/v1/finance/ocr/metrics` | Retrieve OCR stability KPIs (acceptance rate, edit rate, discard rate, confidence). | None |

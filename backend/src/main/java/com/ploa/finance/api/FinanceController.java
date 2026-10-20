@@ -43,6 +43,14 @@ public class FinanceController {
     }
 
     /**
+     * Get OCR stability and quality tracking metrics.
+     */
+    @GetMapping("/ocr/metrics")
+    public ResponseEntity<com.ploa.finance.api.dto.OcrMetricsResponse> getOcrMetrics() {
+        return ResponseEntity.ok(financeService.getOcrMetrics());
+    }
+
+    /**
      * Upload and extract structured receipt data from an image.
      */
     @PostMapping(value = "/ocr", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)

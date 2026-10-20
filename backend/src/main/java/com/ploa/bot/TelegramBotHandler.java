@@ -16,6 +16,7 @@ import org.springframework.stereotype.Component;
 import org.telegram.telegrambots.client.okhttp.OkHttpTelegramClient;
 import org.telegram.telegrambots.longpolling.interfaces.LongPollingUpdateConsumer;
 import org.telegram.telegrambots.longpolling.starter.SpringLongPollingBot;
+import org.telegram.telegrambots.meta.api.methods.AnswerCallbackQuery;
 import org.telegram.telegrambots.meta.api.methods.GetFile;
 import org.telegram.telegrambots.meta.api.methods.send.SendMessage;
 import org.telegram.telegrambots.meta.api.methods.updatingmessages.EditMessageText;
@@ -34,6 +35,7 @@ import java.io.InputStream;
 import java.time.LocalDate;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 
 /**
@@ -145,12 +147,24 @@ public class TelegramBotHandler implements SpringLongPollingBot, LongPollingUpda
             return;
         }
 
+        String imageSha256 = computeSha256(photoBytes);
         OcrResult ocr = ocrService.extractFromImage(photoBytes, "image/jpeg");
-        Transaction tx = buildTransaction(ocr, msgId);
+        Transaction tx = buildTransaction(ocr, msgId, imageSha256);
+
+        var dedup = financeService.checkDuplicate(ocr, imageSha256);
+        if (dedup.hasDuplicate()) {
+            tx.setDuplicateWarning(dedup.warningMessage());
+        }
+
         Transaction saved = financeService.save(tx);
+        financeService.recordOcrScan(saved, ocr, imageSha256);
 
         SendMessage msg = messageFactory.buildConfirmationMessage(chatId, saved, ocr);
-        telegramClient.execute(msg);
+        var sent = telegramClient.execute(msg);
+        if (sent != null) {
+            saved.setTelegramMsgId((long) sent.getMessageId());
+            financeService.save(saved);
+        }
     }
 
     private void handleDocumentPhoto(Update update) throws TelegramApiException {
@@ -173,12 +187,24 @@ public class TelegramBotHandler implements SpringLongPollingBot, LongPollingUpda
         String mime = (doc.getMimeType() != null && !doc.getMimeType().isBlank())
                 ? doc.getMimeType()
                 : "image/jpeg";
+        String imageSha256 = computeSha256(photoBytes);
         OcrResult ocr = ocrService.extractFromImage(photoBytes, mime);
-        Transaction tx = buildTransaction(ocr, msgId);
+        Transaction tx = buildTransaction(ocr, msgId, imageSha256);
+
+        var dedup = financeService.checkDuplicate(ocr, imageSha256);
+        if (dedup.hasDuplicate()) {
+            tx.setDuplicateWarning(dedup.warningMessage());
+        }
+
         Transaction saved = financeService.save(tx);
+        financeService.recordOcrScan(saved, ocr, imageSha256);
 
         SendMessage msg = messageFactory.buildConfirmationMessage(chatId, saved, ocr);
-        telegramClient.execute(msg);
+        var sent = telegramClient.execute(msg);
+        if (sent != null) {
+            saved.setTelegramMsgId((long) sent.getMessageId());
+            financeService.save(saved);
+        }
     }
 
     private boolean isImageDocument(Document doc) {
@@ -198,14 +224,52 @@ public class TelegramBotHandler implements SpringLongPollingBot, LongPollingUpda
             return;
         }
 
+        // Check if the user is replying to a pending transaction confirmation card
+        var replyTo = update.getMessage().getReplyToMessage();
+        if (replyTo != null && replyTo.getMessageId() != null) {
+            long repliedMsgId = replyTo.getMessageId();
+            var pendingTxOpt = financeService.findByTelegramMsgId(repliedMsgId);
+            if (pendingTxOpt.isPresent() && !pendingTxOpt.get().isConfirmed()) {
+                if (isConfirmationIntent(text)) {
+                    confirmAndNotify(chatId, (int) repliedMsgId, pendingTxOpt.get());
+                    return;
+                }
+                handleTransactionRefinement(chatId, (int) repliedMsgId, pendingTxOpt.get(), text);
+                return;
+            }
+        }
+
+        // Conversational confirmation without explicit reply if there is an active pending transaction
+        if (isConfirmationIntent(text)) {
+            var pendingList = financeService.getPendingTransactions();
+            if (!pendingList.isEmpty()) {
+                Transaction latestPending = pendingList.get(0);
+                int cardMsgId = latestPending.getTelegramMsgId() != null ? latestPending.getTelegramMsgId().intValue() : 0;
+                confirmAndNotify(chatId, cardMsgId, latestPending);
+                return;
+            }
+        }
+
         if (isExpenseIntent(text)) {
             // Quick expense: "50k coffee", "45k lunch"
             sendText(chatId, "💬 Parsing expense...");
             OcrResult ocr = ocrService.extractFromText(text);
-            Transaction tx = buildTransaction(ocr, null);
+            Transaction tx = buildTransaction(ocr, null, null);
+
+            var dedup = financeService.checkDuplicate(ocr, null);
+            if (dedup.hasDuplicate()) {
+                tx.setDuplicateWarning(dedup.warningMessage());
+            }
+
             Transaction saved = financeService.save(tx);
+            financeService.recordOcrScan(saved, ocr, null);
+
             SendMessage msg = messageFactory.buildConfirmationMessage(chatId, saved, ocr);
-            telegramClient.execute(msg);
+            var sent = telegramClient.execute(msg);
+            if (sent != null) {
+                saved.setTelegramMsgId((long) sent.getMessageId());
+                financeService.save(saved);
+            }
         } else {
             // Life OS AI Assistant chat!
             sendText(chatId, "🤔 *PLOA is thinking...*");
@@ -303,6 +367,15 @@ public class TelegramBotHandler implements SpringLongPollingBot, LongPollingUpda
 
         if (!isAllowed(chatId)) return;
 
+        // Immediately acknowledge callback query to avoid button spinning/freezing in Telegram client
+        try {
+            telegramClient.execute(AnswerCallbackQuery.builder()
+                    .callbackQueryId(cb.getId())
+                    .build());
+        } catch (Exception e) {
+            log.debug("Failed to answer callback query: {}", e.getMessage());
+        }
+
         String[] parts = data.split(":");
         String action = parts[0];
         UUID txId = UUID.fromString(parts[1]);
@@ -316,6 +389,21 @@ public class TelegramBotHandler implements SpringLongPollingBot, LongPollingUpda
                 financeService.delete(txId);
                 editText(chatId, msgId, "🗑️ Transaction deleted.");
             }
+            case "EDIT" -> {
+                Optional<Transaction> txOpt = financeService.findById(txId);
+                if (txOpt.isPresent()) {
+                    Transaction tx = txOpt.get();
+                    SendMessage card = messageFactory.buildConfirmationMessage(chatId, tx, null);
+                    String editPrompt = card.getText() + "\n\n✏️ <b>Edit Mode:</b> Swipe & reply directly to this card with your correction (e.g. <i>'amount 45k'</i>, <i>'category Food'</i>), or tap <b>[✅ Confirm]</b> when ready.";
+                    telegramClient.execute(EditMessageText.builder()
+                            .chatId(chatId)
+                            .messageId(msgId)
+                            .text(editPrompt)
+                            .parseMode("HTML")
+                            .replyMarkup((InlineKeyboardMarkup) card.getReplyMarkup())
+                            .build());
+                }
+            }
             case "TOGGLE_TYPE" -> {
                 String newCategory = parts.length > 2 ? parts[2] : "Other";
                 SpendType newType = SpendType.valueOf(parts.length > 3 ? parts[3] : "DISCRETIONARY");
@@ -327,11 +415,73 @@ public class TelegramBotHandler implements SpringLongPollingBot, LongPollingUpda
         }
     }
 
+    private void handleTransactionRefinement(long chatId, int cardMsgId, Transaction tx, String instruction) throws TelegramApiException {
+        sendText(chatId, "✏️ *Updating transaction details...*");
+        try {
+            OcrResult refined = ocrService.refineFromUserInstruction(tx, instruction);
+            Transaction updated = financeService.applyCorrection(tx.getId(), refined, instruction);
+
+            // Update old card message to indicate it has been revised
+            try {
+                editText(chatId, cardMsgId, "🔄 <i>Draft updated below ⬇️</i>");
+            } catch (Exception ignored) {}
+
+            // Send fresh confirmation card with all interactive buttons AT THE BOTTOM of the chat
+            SendMessage newCard = messageFactory.buildConfirmationMessage(chatId, updated, refined);
+            var sent = telegramClient.execute(newCard);
+            if (sent != null) {
+                updated.setTelegramMsgId((long) sent.getMessageId());
+                financeService.save(updated);
+            }
+        } catch (Exception e) {
+            log.error("Failed to refine transaction: {}", e.getMessage(), e);
+            sendText(chatId, "❌ Could not update transaction: " + e.getMessage());
+        }
+    }
+
+    private void confirmAndNotify(long chatId, int cardMsgId, Transaction tx) throws TelegramApiException {
+        financeService.confirm(tx.getId());
+        if (cardMsgId > 0) {
+            try {
+                editText(chatId, cardMsgId, "✅ <b>Transaction Confirmed!</b>\nAmount: " + formatVnd(tx.getAmount()) + " VND (" + tx.getCategory() + ")");
+            } catch (Exception ignored) {}
+        }
+        sendText(chatId, "✅ *Transaction confirmed!* " + formatVnd(tx.getAmount()) + " VND for *" + (tx.getMerchant() != null ? tx.getMerchant() : tx.getCategory()) + "* has been locked into your ledger.");
+    }
+
+    private boolean isConfirmationIntent(String text) {
+        if (text == null) return false;
+        String t = text.trim().toLowerCase();
+        return t.matches("^(confirm|yes|ok|okay|done|save|correct|accurate|proceed|looks good|accept|luu|chuan|duyet|dong y|duoc)$");
+    }
+
+    private String formatVnd(Long amount) {
+        if (amount == null) return "0";
+        return java.text.NumberFormat.getInstance(new java.util.Locale("vi", "VN")).format(amount);
+    }
+
     // ── Helpers ───────────────────────────────────────────────────────────────
 
-    private Transaction buildTransaction(OcrResult ocr, Long telegramMsgId) {
+    private Transaction buildTransaction(OcrResult ocr, Long telegramMsgId, String imageSha256) {
         Transaction tx = new Transaction();
-        tx.setTxDate(ocr.transactionDate() != null ? ocr.transactionDate() : LocalDate.now());
+        LocalDate d = ocr.transactionDate() != null ? ocr.transactionDate() : LocalDate.now();
+        tx.setTxDate(d);
+
+        // Precise temporal modeling: use bill time if present, fallback to upload time
+        if (ocr.transactionTime() != null && !ocr.transactionTime().isBlank()) {
+            try {
+                String timeStr = ocr.transactionTime().trim();
+                java.time.LocalTime t = java.time.LocalTime.parse(timeStr.length() == 5 ? timeStr + ":00" : timeStr);
+                tx.setTxTimestamp(d.atTime(t).atZone(java.time.ZoneId.of("Asia/Ho_Chi_Minh")).toOffsetDateTime());
+            } catch (Exception e) {
+                tx.setTxTimestamp(java.time.OffsetDateTime.now());
+            }
+        } else {
+            tx.setTxTimestamp(java.time.OffsetDateTime.now());
+        }
+
+        tx.setImageSha256(imageSha256);
+        tx.setInvoiceNumber(ocr.invoiceNumber());
         tx.setAmount(ocr.totalAmount() != null ? ocr.totalAmount() : 0L);
         tx.setCurrency(ocr.currency() != null ? ocr.currency() : "VND");
         tx.setCategory(ocr.category() != null ? ocr.category() : "Other");
@@ -346,6 +496,21 @@ public class TelegramBotHandler implements SpringLongPollingBot, LongPollingUpda
         tx.setTelegramMsgId(telegramMsgId);
         tx.setConfirmed(false);
         return tx;
+    }
+
+    private String computeSha256(byte[] data) {
+        if (data == null || data.length == 0) return null;
+        try {
+            java.security.MessageDigest md = java.security.MessageDigest.getInstance("SHA-256");
+            byte[] digest = md.digest(data);
+            StringBuilder sb = new StringBuilder();
+            for (byte b : digest) {
+                sb.append(String.format("%02x", b));
+            }
+            return sb.toString();
+        } catch (Exception e) {
+            return null;
+        }
     }
 
     private boolean isAllowed(long chatId) {

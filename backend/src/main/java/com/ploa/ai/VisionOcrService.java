@@ -37,20 +37,23 @@ public class VisionOcrService {
             {
               "document_type": "BANK_TRANSFER" | "RECEIPT" | "E_COMMERCE" | "UNKNOWN",
               "source_platform": "VietQR" | "Shopee" | "manual" | null,
+              "invoice_number": "<invoice number, order ID, or bank reference code if visible>" | null,
               "transaction_date": "YYYY-MM-DD" | null,
+              "transaction_time": "HH:MM:SS" | "HH:MM" | null,
               "total_amount": <integer in VND, no decimals> | null,
               "currency": "VND",
               "category": "Food" | "Groceries" | "Transport" | "Bills" | "Shopping" | "Sports" | "Other",
               "spend_type": "FIXED" | "DISCRETIONARY",
               "merchant": "<merchant name>" | null,
               "note": "<brief description>" | null,
+              "confidence": <float from 0.0 to 1.0 representing extraction certainty>,
               "line_items": [] | null
             }
             
             Rules:
             - NEVER invent data. Use null if uncertain.
-            - Amounts MUST be integers in VND (multiply by 1000 if shown in thousands).
-            - Bills/Rent/Subscriptions = FIXED. Everything else = DISCRETIONARY.
+            - Amounts MUST be integers in VND (multiply by 1000 if shown in thousands, e.g. 50k -> 50000).
+            - Bills/Rent/Subscriptions/Utilities = FIXED. Everything else = DISCRETIONARY.
             - Return ONLY the JSON object, no markdown, no explanation.
             """;
 
@@ -131,8 +134,60 @@ public class VisionOcrService {
     }
 
     private OcrResult fallbackResult(String note) {
-        return new OcrResult("UNKNOWN", null, LocalDate.now(), null,
-                "VND", "Other", "DISCRETIONARY", null, note, null);
+        return new OcrResult("UNKNOWN", null, null, LocalDate.now(), null, null,
+                "VND", "Other", "DISCRETIONARY", null, note, 0.0, null);
+    }
+
+    /**
+     * Refine an existing draft transaction using natural language instruction from the user.
+     */
+    public OcrResult refineFromUserInstruction(com.ploa.finance.model.Transaction current, String userInstruction) {
+        log.info("Refining transaction {} via user instruction: {}", current.getId(), userInstruction);
+        String prompt = """
+                You are updating a draft financial transaction based on the user's correction instruction.
+                
+                CURRENT TRANSACTION DRAFT:
+                - Merchant: %s
+                - Amount: %s %s
+                - Category: %s
+                - Spend Type: %s
+                - Date: %s
+                - Invoice Number: %s
+                - Note: %s
+                
+                USER CORRECTION INSTRUCTION:
+                "%s"
+                
+                Apply ONLY the requested changes. Keep all other existing values unchanged.
+                For Vietnamese shorthand amounts: "45k" = 45000, "1.5m" = 1500000.
+                Return ONLY a valid JSON object matching the standard OCR schema.
+                """.formatted(
+                current.getMerchant(),
+                current.getAmount(),
+                current.getCurrency(),
+                current.getCategory(),
+                current.getSpendType(),
+                current.getTxDate(),
+                current.getInvoiceNumber(),
+                current.getNote(),
+                userInstruction
+        );
+        try {
+            String raw = chatClient.prompt()
+                    .system(OCR_SYSTEM_PROMPT)
+                    .user(prompt)
+                    .call()
+                    .content();
+
+            String json = raw != null ? raw.strip() : "{}";
+            if (json.startsWith("```")) {
+                json = json.replaceFirst("```[a-z]*\\n?", "").replaceAll("```$", "").strip();
+            }
+            return MAPPER.readValue(json, OcrResult.class);
+        } catch (Exception e) {
+            log.error("Failed to refine transaction: {}", e.getMessage(), e);
+            throw new RuntimeException("Could not refine transaction: " + e.getMessage(), e);
+        }
     }
 
     /**
@@ -165,8 +220,8 @@ public class VisionOcrService {
             return result;
         } catch (Exception e) {
             log.error("Text OCR parsing failed: {}", e.getMessage(), e);
-            return new OcrResult("UNKNOWN", "manual", LocalDate.now(), null,
-                    "VND", "Other", "DISCRETIONARY", null, text, null);
+            return new OcrResult("UNKNOWN", "manual", null, LocalDate.now(), null, null,
+                    "VND", "Other", "DISCRETIONARY", null, text, 0.0, null);
         }
     }
 }

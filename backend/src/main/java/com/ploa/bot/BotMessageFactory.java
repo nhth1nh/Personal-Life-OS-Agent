@@ -21,34 +21,43 @@ public class BotMessageFactory {
         String merchant = escapeHtml(tx.getMerchant() != null ? tx.getMerchant() : "—");
         String category = escapeHtml(tx.getCategory() != null ? tx.getCategory() : "Other");
         String note = escapeHtml(tx.getNote() != null ? tx.getNote() : "—");
+        String timeStr = tx.getTxTimestamp() != null
+                ? tx.getTxTimestamp().format(java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm"))
+                : tx.getTxDate().toString();
 
-        String text = """
-                📋 <b>Transaction Captured</b>
-                
-                💰 Amount: <b>%s VND</b>
-                🏷️ Category: <b>%s</b> (%s)
-                🏪 Merchant: %s
-                📅 Date: %s
-                📝 Note: %s
-                
-                <i>Please confirm or correct:</i>
-                """.formatted(
-                VND_FORMAT.format(tx.getAmount()),
-                category,
-                tx.getSpendType(),
-                merchant,
-                tx.getTxDate(),
-                note
-        );
+        StringBuilder sb = new StringBuilder();
+        if (tx.getDuplicateWarning() != null && !tx.getDuplicateWarning().isBlank()) {
+            sb.append("⚠️ <b>Potential Duplicate Detected!</b>\n");
+            sb.append("🔍 <i>").append(escapeHtml(tx.getDuplicateWarning())).append("</i>\n\n");
+        } else {
+            sb.append("📋 <b>Transaction Captured</b>\n\n");
+        }
+
+        sb.append("💰 Amount: <b>").append(VND_FORMAT.format(tx.getAmount())).append(" VND</b>\n");
+        sb.append("🏷️ Category: <b>").append(category).append("</b> (").append(tx.getSpendType()).append(")\n");
+        sb.append("🏪 Merchant: ").append(merchant).append("\n");
+        sb.append("📅 Timestamp: ").append(timeStr).append("\n");
+        if (tx.getInvoiceNumber() != null && !tx.getInvoiceNumber().isBlank()) {
+            sb.append("🧾 Invoice/Ref: <code>").append(escapeHtml(tx.getInvoiceNumber())).append("</code>\n");
+        }
+        sb.append("📝 Note: ").append(note).append("\n\n");
+        sb.append("<i>💡 Tap ✏️ Edit or reply to this message to correct (e.g. 'amount 45k', 'merchant Starbucks').</i>");
 
         String txId = tx.getId().toString();
+        String confirmText = tx.getDuplicateWarning() != null ? "✅ Confirm Anyway" : "✅ Confirm";
 
         InlineKeyboardMarkup keyboard = InlineKeyboardMarkup.builder()
                 .keyboardRow(new InlineKeyboardRow(List.of(
                         InlineKeyboardButton.builder()
-                                .text("✅ Confirm")
+                                .text(confirmText)
                                 .callbackData("CONFIRM:" + txId)
                                 .build(),
+                        InlineKeyboardButton.builder()
+                                .text("✏️ Edit")
+                                .callbackData("EDIT:" + txId)
+                                .build()
+                )))
+                .keyboardRow(new InlineKeyboardRow(List.of(
                         InlineKeyboardButton.builder()
                                 .text("🔄 Toggle Type")
                                 .callbackData("TOGGLE_TYPE:" + txId)
@@ -62,7 +71,7 @@ public class BotMessageFactory {
 
         return SendMessage.builder()
                 .chatId(chatId)
-                .text(text)
+                .text(sb.toString())
                 .parseMode("HTML")
                 .replyMarkup(keyboard)
                 .build();

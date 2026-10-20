@@ -46,23 +46,37 @@ flowchart TD
 
 ---
 
-## 📸 Interactive Inline Keyboards (Receipt Confirmation)
+## 📸 Interactive Inline Keyboards & Conversational Refinement
 
-Whenever a photo or quick expense is captured, the bot responds with an interactive message containing three callback buttons:
+Whenever a photo or quick expense is captured, the bot responds with an interactive message containing callback buttons:
 ```
 📋 Transaction Captured
+
 💰 Amount: 55,000 VND
 🏷️ Category: Food & Dining (DISCRETIONARY)
 🏪 Merchant: Highlands Coffee
-📅 Date: 2026-10-19
+📅 Timestamp: 2026-10-20 07:15
+🧾 Invoice/Ref: HD-20261020-001
 📝 Note: Iced milk coffee size L
 
-[✅ Confirm]  [🔄 Toggle Type]  [🗑️ Delete]
+💡 Tap ✏️ Edit or reply to this message to correct (e.g. 'amount 45k', 'merchant Starbucks').
+
+[✅ Confirm]  [✏️ Edit]
+[🔄 Toggle Type]  [🗑️ Delete]
 ```
 
-- `CONFIRM:<id>`: Commits the draft into the ledger (`confirmed = true`). Edits the card to `✅ Transaction confirmed!`.
+### Button Actions & Lifecycle
+- `CONFIRM:<id>`: Commits the draft into the ledger (`confirmed = true`). If a duplicate was detected, the button displays `[✅ Confirm Anyway]`. Edits the card to `✅ Transaction confirmed!`.
+- `EDIT:<id>`: Enters Edit Mode, prompting the user with guidance on how to reply. Users can swipe and reply directly to the card at any time (e.g. *"Amount is 45k, not 55k"* or *"This is rent money"*).
 - `TOGGLE_TYPE:<id>`: Toggles spend type between `FIXED` and `DISCRETIONARY` in-place, updating the message view without spamming new messages.
-- `DELETE:<id>`: Deletes the transaction from PostgreSQL and edits the card to `🗑️ Transaction deleted.`.
+- `DELETE:<id>`: Discards the draft, logs the discard event in `ocr_audits`, and edits the card to `🗑️ Transaction deleted.`.
+
+### Conversational In-Place Refinement & Fresh Card Delivery
+1. **Fresh Card at the Bottom**: When a user replies to a draft card with corrections (e.g. *"Amount is 45k"*, *"Category is Bills"*), the bot marks the superseded card as `🔄 Draft updated below ⬇️` and posts a **fresh confirmation card with interactive buttons directly at the bottom of the chat**, ensuring the `[✅ Confirm]` button remains immediately accessible without scrolling up.
+2. **Conversational Confirmation (No Clicks Needed)**: Users can finalize pending transactions by simply typing or replying with confirmation words:
+   - Supported terms: `done`, `confirm`, `ok`, `yes`, `save`, `correct`, `accurate`, `proceed`, `looks good`, `accept`.
+   - The bot marks the transaction as confirmed, updates the card status, and notifies the user with the formatted amount.
+3. **Immediate Callback Acknowledgment**: Every callback query executes `AnswerCallbackQuery` immediately, preventing Telegram from showing loading spinners or freezing buttons.
 
 ---
 

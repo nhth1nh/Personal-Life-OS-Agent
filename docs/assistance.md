@@ -51,6 +51,7 @@ Every tool follows the **Single Responsibility Principle (SRP)**. Tools return d
 | `getWeightTrend` | None | Retrieves latest body weight, 7-day Exponential Moving Average (EMA) smoothed weight, delta to goal, and weekly rate of change. |
 | `getFinancialStatus` | None | Retrieves month-to-date budget pacing: monthly budget, total spend, discretionary vs fixed split, remaining budget, daily burn rate, and safe daily allowance. |
 | `getRecentTransactions` | `limit` (int, default 5) | Retrieves the most recent individual logged expenditures. |
+| `getPendingTransactions` | None | Retrieves unconfirmed or pending draft transactions awaiting user confirmation or recently modified via receipt OCR. |
 | `getUserProfile` | None | Retrieves all persistent user preferences, dietary restrictions, and personal goals. |
 | `saveUserMemory` | `category`, `key`, `value` | **Write Tool**: Automatically persists a user goal, habit, or preference to PostgreSQL (`user_memories`). |
 

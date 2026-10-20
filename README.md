@@ -75,11 +75,15 @@ flowchart TD
 - **7-day EMA Weight Smoothing**: Filters out daily water retention fluctuations using an Exponential Moving Average ($\alpha = 2/(N+1)$) towards your target goal.
 
 ### 2. 💰 Frictionless Personal Finance Ledger
-- **Vision OCR Extraction**: Send a bank transfer confirmation screenshot, paper receipt, or online shopping checkout directly to the Telegram bot. Gemini Vision extracts amount, merchant, category, and line items.
-- **Interactive Inline Keyboard**: Every captured transaction is held in a draft state with interactive buttons:
+- **Vision OCR Extraction**: Send a bank transfer confirmation screenshot, paper receipt, or online shopping checkout directly to the Telegram bot. Gemini Vision extracts amount, merchant, category, timestamp, invoice/reference number, and line items.
+- **Multi-Tier Bill Deduplication**: 3-tier validation (Image SHA-256 hash, invoice/reference ID, and fuzzy amount+date+merchant match) with user-guided resolution (`[✅ Confirm Anyway]`).
+- **Interactive Inline Keyboard & Conversational In-Place Refinement**:
   - `[✅ Confirm]`: Commits the transaction to PostgreSQL.
+  - `[✏️ Edit]`: Enables guided edit mode. Users can also swipe & reply directly to the card (e.g. *"Amount is 45k, not 55k"*, *"This is rent money"*).
   - `[🔄 Toggle Type]`: Switches between Fixed and Discretionary spending.
-  - `[🗑️ Delete]`: Discards the entry.
+  - `[🗑️ Delete]`: Discards the entry and logs the discard event.
+  - **Conversational Confirmation**: Simply reply or send *"done"*, *"confirm"*, *"ok"*, or *"yes"* to instantly finalize a pending draft without tapping buttons.
+- **OCR Stability & Metrics Tracking**: Full audit trail in `ocr_audits` measuring first-shot accuracy, user correction frequency, and discard rates via `GET /api/v1/finance/ocr/metrics`.
 - **Deterministic Burn Rate Engine**: Dynamically calculates average daily burn rate, remaining monthly budget, and safe daily allowance based on elapsed vs remaining days.
 
 ### 3. 🤖 Life OS AI Assistant & Intelligent Chat Router
@@ -231,6 +235,7 @@ All protected endpoints accept authentication through any of the following metho
 | **GET** | `/api/v1/finance/burn-rate` | Retrieve month-to-date burn rate, remaining budget, and daily allowance. | *(None)* |
 | **GET** | `/api/v1/finance/transactions` | List confirmed and draft transactions for the current month. | `?limit=30` |
 | **POST** | `/api/v1/finance/ocr` | Upload and extract structured receipt data from an image file. | Multipart form-data `file=@receipt.jpg` |
+| **GET** | `/api/v1/finance/ocr/metrics` | Retrieve OCR stability KPIs (acceptance rate, edit rate, discard rate, confidence). | *(None)* |
 
 ### 3. AI Assistant & Memory
 | Method | Endpoint | Description | Query / Body |
