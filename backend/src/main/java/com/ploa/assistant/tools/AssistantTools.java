@@ -183,11 +183,11 @@ public class AssistantTools {
         return memoryService.getAllPreferences();
     }
 
-    @Tool(description = "Save or update a persistent user habit, preference, goal, or personal fact into long-term database memory. Call this ONLY when the user reveals a lasting fact (e.g. diet, running goal, budget rule).")
+    @Tool(description = "Persist enduring, long-term profile data or interaction rules (name, communication style, pronouns, dietary rules, budget rules, goals) to PostgreSQL. NEVER use for transient daily activities, momentary feelings, or conversation remarks.")
     public String saveUserMemory(
-            @ToolParam(description = "Category: 'FITNESS', 'DIET', 'FINANCE', 'LIFESTYLE', 'GOAL', or 'GENERAL'") String category,
-            @ToolParam(description = "Short identifier key, e.g. 'diet_type', 'marathon_goal', 'preferred_workout_time'") String key,
-            @ToolParam(description = "Detailed preference value, e.g. 'Vegetarian / No Beef', 'Target sub-4h marathon in Dec 2026'") String value) {
+            @ToolParam(description = "Category: 'PROFILE', 'PERSONA', 'PREFERENCE', 'FITNESS', 'DIET', 'FINANCE', 'GOAL'") String category,
+            @ToolParam(description = "Short identifier key, e.g. 'name', 'communication_style', 'diet_type', 'marathon_goal'") String key,
+            @ToolParam(description = "Detailed preference value, e.g. 'Alex', 'Informal tone', 'Vegetarian'") String value) {
         log.info("Assistant tool call: saveUserMemory(category={}, key={}, value={})", category, key, value);
         UserMemory m = memoryService.savePreference(category, key, value, "CONVERSATION");
         return "Saved memory [" + m.getCategory() + " / " + m.getMemoryKey() + "]: " + m.getMemoryValue();
