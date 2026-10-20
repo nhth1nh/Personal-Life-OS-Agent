@@ -78,6 +78,7 @@ If a call fails or is rate-limited:
 | :--- | :--- | :--- |
 | `assistant_planner` | `AssistantService` | Stage 1 selective tool planning & JSON routing. |
 | `assistant_synthesis` | `AssistantService` | Stage 2 final conversational response generation. |
+| `assistant_vision` | `AssistantService` | Multimodal chat and analysis on user-uploaded images (food, workouts, general). |
 | `ocr_image` | `VisionOcrService` | Multimodal entity extraction from receipt or transfer images. |
 | `ocr_text` | `VisionOcrService` | Fast natural language parsing of text expenses (`50k coffee`). |
 | `ocr_refine` | `VisionOcrService` | User conversational corrections on pending transactions. |
@@ -91,7 +92,7 @@ If a call fails or is rate-limited:
 To reduce token consumption and latency, the following optimizations are baked into the pipeline:
 
 ### 1. Conversational Fast-Path Short-Circuit
-* `AssistantService.shouldSkipToolPlanning(text)` automatically catches greetings, pleasantries, and small talk (`"hello"`, `"chào bạn"`, `"thanks"`, `"ok"`, `"bạn là ai"`).
+* `AssistantService.shouldSkipToolPlanning(text)` automatically catches greetings, pleasantries, and small talk (`"hello"`, `"thanks"`, `"ok"`, `"who are you"`).
 * Bypasses the tool planner LLM call completely, returning an empty tool plan immediately.
 * **Savings**: Cuts **50% of LLM calls** on casual turns (~800 tokens and 1 roundtrip saved).
 

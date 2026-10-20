@@ -67,7 +67,7 @@ public class VisionOcrService {
               "invoice_number": null,
               "transaction_date": "YYYY-MM-DD" | null,
               "transaction_time": null,
-              "total_amount": <integer in VND, no decimals>,
+              "total_amount": <integer in VND, no decimals> | null,
               "currency": "VND",
               "category": "Food" | "Groceries" | "Transport" | "Bills" | "Shopping" | "Sports" | "Other",
               "spend_type": "FIXED" | "DISCRETIONARY",
@@ -78,6 +78,7 @@ public class VisionOcrService {
             }
             Rules:
             - Amounts in VND: "50k" = 50000, "1.5m" = 1500000.
+            - If the input does NOT describe an expense or monetary payment (e.g. conversational chat, dates, general text), set "total_amount": null and "confidence": 0.0.
             - Bills/Rent/Subscriptions/Utilities = FIXED. Everything else = DISCRETIONARY.
             - Return ONLY the JSON object, no markdown.
             """;
@@ -196,7 +197,7 @@ public class VisionOcrService {
                 "%s"
                 
                 Apply ONLY the requested changes. Keep all other existing values unchanged.
-                For Vietnamese shorthand amounts: "45k" = 45000, "1.5m" = 1500000.
+                For shorthand amounts: "45k" = 45000, "1.5m" = 1500000.
                 Return ONLY a valid JSON object matching the standard OCR schema.
                 """.formatted(
                 temporalContext.getFormattedPromptContext(),
@@ -243,7 +244,8 @@ public class VisionOcrService {
                 Return ONLY JSON (same schema as before). For amounts:
                 - "50k" = 50000 VND
                 - "1.5m" = 1500000 VND
-                - "200" = 200 VND (assume literal if no unit)
+                - "200k" = 200000 VND
+                - If not a valid expense or no monetary amount was spent, set total_amount to null.
                 """.formatted(temporalContext.getFormattedPromptContext(), text);
         try {
             String raw = chatClient.prompt()

@@ -30,7 +30,8 @@ public class ChatController {
     }
 
     /**
-     * Browser-friendly GET endpoint: /api/v1/chat?q=...&chatId=...&apiKey=...
+     * Browser-friendly GET endpoint: /api/v1/chat?q=...&chatId=...
+     * Note: Requires valid authentication header (Authorization: Bearer or X-API-Key).
      */
     @GetMapping
     public ResponseEntity<ChatResponse> chatGet(

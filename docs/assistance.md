@@ -52,6 +52,7 @@ Every tool follows the **Single Responsibility Principle (SRP)**. Tools return d
 | `getFinancialStatus` | None | Retrieves month-to-date budget pacing: monthly budget, total spend, discretionary vs fixed split, remaining budget, daily burn rate, and safe daily allowance. |
 | `getRecentTransactions` | `limit` (int, default 5) | Retrieves the most recent individual logged expenditures. |
 | `getPendingTransactions` | None | Retrieves unconfirmed or pending draft transactions awaiting user confirmation or recently modified via receipt OCR. |
+| `recordExpense` | None (derived from query) | **Action Tool**: Dynamically parses and commits an expense or payment mentioned in natural language across any language (`50k coffee`, `Spent 15€ on lunch`, `Lunch was 45k`), creating a pending transaction draft. |
 | `getUserProfile` | None | Retrieves all persistent user preferences, dietary restrictions, and personal goals. |
 | `saveUserMemory` | `category`, `key`, `value` | **Write Tool**: Automatically persists a user goal, habit, or preference to PostgreSQL (`user_memories`). |
 
@@ -114,6 +115,15 @@ Every model request is automatically enriched with real-time temporal grounding:
   - **Explicit User API**: `POST /api/v1/memory`
   - **Conversational Memory**: Model autonomously extracts and saves facts using `saveUserMemory`.
 - **Continuous Personalization**: Profile memories are automatically grounded into every prompt, and the model is strictly instructed to obey saved persona, tone, and pronoun preferences.
+
+---
+
+## 👁️ Multimodal Image Understanding (`chatDetailed`)
+
+In addition to text, `AssistantService` natively accepts raw image attachments:
+- **Food & Nutrition Analysis**: User sends a photo of a meal with `"How many calories is this?"` $\rightarrow$ model inspects visual ingredients, estimates caloric and macro breakdown, and contextualizes against the user's daily burn rate.
+- **Fitness & Workout Consulting**: User uploads a screenshot of a Garmin workout graph, shoe wear, or recovery chart $\rightarrow$ model grounds advice against current Body Battery and recovery state.
+- **Automatic Fallback for Non-Financial Images**: If an image uploaded to Telegram is not a financial receipt (e.g., photo of lunch, watch screen, landscape), the system automatically routes the image to `AssistantService` rather than failing or saving an empty 0 VND transaction.
 
 ---
 

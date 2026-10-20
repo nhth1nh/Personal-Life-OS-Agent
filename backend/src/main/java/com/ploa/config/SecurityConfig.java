@@ -58,7 +58,7 @@ public class SecurityConfig {
     @Bean
     public CorsConfigurationSource corsConfigurationSource() {
         CorsConfiguration config = new CorsConfiguration();
-        config.setAllowedOriginPatterns(List.of("*"));
+        config.setAllowedOriginPatterns(List.of("http://localhost:[*]", "http://127.0.0.1:[*]", "https://*.ploa.internal"));
         config.setAllowedMethods(List.of("GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"));
         config.setAllowedHeaders(List.of("*"));
         config.setAllowCredentials(true);
@@ -92,19 +92,19 @@ public class SecurityConfig {
                     }
                 }
 
-                // 3. Check query parameter ?apiKey=... or ?api_key=...
-                if (key == null || key.isBlank()) {
-                    key = request.getParameter("apiKey");
-                    if (key == null || key.isBlank()) {
-                        key = request.getParameter("api_key");
-                    }
+                // Constant-time comparison to prevent timing side-channel attacks
+                boolean authenticated = false;
+                if (expected != null && !expected.isBlank() && key != null && !key.isBlank()) {
+                    byte[] expectedBytes = expected.getBytes(java.nio.charset.StandardCharsets.UTF_8);
+                    byte[] keyBytes = key.getBytes(java.nio.charset.StandardCharsets.UTF_8);
+                    authenticated = java.security.MessageDigest.isEqual(expectedBytes, keyBytes);
                 }
 
-                if (expected == null || !expected.equals(key)) {
+                if (!authenticated) {
                     log.warn("Rejected request to {} — invalid or missing API key", path);
                     response.setStatus(HttpStatus.UNAUTHORIZED.value());
                     response.setContentType("application/json");
-                    response.getWriter().write("{\"error\":\"Unauthorized\",\"message\":\"Please provide your API key via 'X-API-Key' header, 'Authorization: Bearer <key>', or query parameter '?apiKey=<key>'\"}");
+                    response.getWriter().write("{\"error\":\"Unauthorized\",\"message\":\"Please provide your API key via 'X-API-Key' header or 'Authorization: Bearer <key>'\"}");
                     return;
                 }
 

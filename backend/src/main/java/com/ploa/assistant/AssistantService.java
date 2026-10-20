@@ -4,14 +4,25 @@ import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.ploa.ai.TemporalContext;
+import com.ploa.ai.VisionOcrService;
+import com.ploa.ai.dto.OcrResult;
+import com.ploa.ai.util.ImageOptimizer;
 import com.ploa.assistant.memory.ChatMessage;
 import com.ploa.assistant.memory.MemoryService;
 import com.ploa.assistant.memory.UserMemory;
 import com.ploa.assistant.tools.AssistantTools;
+import com.ploa.finance.model.SpendType;
+import com.ploa.finance.model.Transaction;
+import com.ploa.finance.service.FinanceService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.ai.chat.client.ChatClient;
+import org.springframework.ai.chat.messages.UserMessage;
+import org.springframework.ai.content.Media;
+import org.springframework.core.io.ByteArrayResource;
 import org.springframework.stereotype.Service;
+import org.springframework.util.MimeType;
+import org.springframework.util.MimeTypeUtils;
 
 import java.time.LocalDate;
 import java.util.*;
@@ -32,15 +43,24 @@ public class AssistantService {
     private final MemoryService memoryService;
     private final TemporalContext temporalContext;
     private final ChatClient chatClient;
+    private final VisionOcrService ocrService;
+    private final FinanceService financeService;
+    private final ImageOptimizer imageOptimizer;
 
     public AssistantService(AssistantTools assistantTools,
                             MemoryService memoryService,
                             TemporalContext temporalContext,
-                            ChatClient.Builder chatClientBuilder) {
+                            ChatClient.Builder chatClientBuilder,
+                            VisionOcrService ocrService,
+                            FinanceService financeService,
+                            ImageOptimizer imageOptimizer) {
         this.assistantTools = assistantTools;
         this.memoryService = memoryService;
         this.temporalContext = temporalContext;
         this.chatClient = chatClientBuilder.build();
+        this.ocrService = ocrService;
+        this.financeService = financeService;
+        this.imageOptimizer = imageOptimizer;
     }
 
     @JsonIgnoreProperties(ignoreUnknown = true)
@@ -48,6 +68,10 @@ public class AssistantService {
 
     @JsonIgnoreProperties(ignoreUnknown = true)
     public record ToolPlan(List<String> tools, String date, MemoryPayload memory) {}
+
+    public record ChatResult(String reply, Transaction recordedTransaction, OcrResult ocrResult) {}
+
+    private record ExecutionResult(Map<String, Object> groundingData, Transaction recordedTransaction, OcrResult ocrResult) {}
 
     public String chat(String userMessage) {
         return chat("default-session", userMessage);
@@ -59,21 +83,37 @@ public class AssistantService {
     }
 
     public String chat(String chatId, String userMessage) {
-        log.info("Assistant chat query received from [{}] at {}: {}", chatId, temporalContext.getIsoTimestamp(), userMessage);
+        return chatDetailed(chatId, userMessage).reply();
+    }
+
+    public ChatResult chatDetailed(String chatId, String userMessage) {
+        return chatDetailed(chatId, userMessage, null, null);
+    }
+
+    public ChatResult chatDetailed(String chatId, String userMessage, byte[] imageBytes, String mimeType) {
+        log.info("Assistant chat query received from [{}] at {}: {} (hasImage={})",
+                chatId, temporalContext.getIsoTimestamp(), userMessage, imageBytes != null && imageBytes.length > 0);
         LocalDate today = temporalContext.currentDate();
 
         // 1. Record user turn in chat memory
-        memoryService.saveChatMessage(chatId, "user", userMessage);
+        String memoryText = (userMessage != null && !userMessage.isBlank())
+                ? userMessage
+                : (imageBytes != null ? "(Sent an image)" : "");
+        memoryService.saveChatMessage(chatId, "user", memoryText);
 
         // 2. Fetch conversation context & persistent user preferences
         List<ChatMessage> history = memoryService.getRecentChatHistory(chatId, 8);
         List<UserMemory> preferences = memoryService.getAllPreferences();
 
         // 3. Determine tool execution plan (Selective Grounding) with temporal & conversational context
-        ToolPlan plan = planToolExecution(userMessage, preferences, history);
+        String planQuery = userMessage != null && !userMessage.isBlank()
+                ? userMessage
+                : (imageBytes != null ? "Analyze image" : "");
+        ToolPlan plan = planToolExecution(planQuery, preferences, history);
 
         // 4. Execute only the planned tools
-        Map<String, Object> groundingData = executePlan(plan);
+        ExecutionResult execResult = executePlan(plan, userMessage);
+        Map<String, Object> groundingData = execResult.groundingData();
         if (groundingData.containsKey("memory_saved")) {
             preferences = memoryService.getAllPreferences();
         }
@@ -81,18 +121,35 @@ public class AssistantService {
         // 5. Build prompt with selective grounding, user profile, and conversation history
         String systemPrompt = buildSystemPrompt(today, groundingData, preferences, history);
 
-        // 6. Synthesize the conversational response
-        String reply = chatClient.prompt()
-                .advisors(a -> a.param("operation", "assistant_synthesis"))
-                .system(systemPrompt)
-                .user(userMessage)
-                .call()
-                .content();
+        // 6. Synthesize the conversational response (multimodal if imageBytes present)
+        var promptSpec = chatClient.prompt()
+                .advisors(a -> a.param("operation", imageBytes != null ? "assistant_vision" : "assistant_synthesis"))
+                .system(systemPrompt);
+
+        if (imageBytes != null && imageBytes.length > 0 && imageOptimizer != null) {
+            byte[] processedBytes = imageOptimizer.optimizeForOcr(imageBytes, mimeType);
+            MimeType type = (mimeType != null && !mimeType.isBlank())
+                    ? MimeTypeUtils.parseMimeType(mimeType)
+                    : MimeTypeUtils.IMAGE_JPEG;
+            Media media = new Media(type, new ByteArrayResource(processedBytes));
+            String promptText = (userMessage != null && !userMessage.isBlank())
+                    ? userMessage
+                    : "Please analyze this image in the context of my personal health, nutrition, fitness, or daily life.";
+            UserMessage msg = UserMessage.builder()
+                    .text(promptText)
+                    .media(media)
+                    .build();
+            promptSpec.messages(msg);
+        } else {
+            promptSpec.user(userMessage != null ? userMessage : "");
+        }
+
+        String reply = promptSpec.call().content();
 
         // 7. Record assistant turn in chat memory
         memoryService.saveChatMessage(chatId, "assistant", reply);
 
-        return reply;
+        return new ChatResult(reply, execResult.recordedTransaction(), execResult.ocrResult());
     }
 
     private ToolPlan planToolExecution(String userMessage, List<UserMemory> preferences, List<ChatMessage> history) {
@@ -121,6 +178,7 @@ public class AssistantService {
                 %s
 
                 %sAVAILABLE TOOLS:
+                - "recordExpense": Log a new financial expense or payment into the user's ledger. Call this whenever the user reports spending money, buying goods/services, or paying a bill in any language (e.g. '50k coffee', 'spent 15 EUR on lunch', 'paid 200k electricity'). Do NOT call for general talk about dates or questions about money.
                 - "syncGarminData": Trigger live sync with Garmin Connect. Call ONLY when user explicitly asks to sync or refresh watch data.
                 - "getDailyHealth": Physical biometrics (steps, distance, kcal, active time, body battery, stress, heart rate).
                 - "getHealthReadiness": Recovery readiness, overnight HRV, 30-day baseline Z-scores, recovery level.
@@ -205,17 +263,43 @@ public class AssistantService {
         return new ToolPlan(tools, date, memory);
     }
 
-    private Map<String, Object> executePlan(ToolPlan plan) {
+    private ExecutionResult executePlan(ToolPlan plan, String userMessage) {
         if (plan == null || plan.tools() == null || plan.tools().isEmpty()) {
-            return Collections.emptyMap();
+            return new ExecutionResult(Collections.emptyMap(), null, null);
         }
 
         Map<String, Object> data = new LinkedHashMap<>();
         String targetDate = plan.date() != null ? plan.date() : "today";
+        Transaction recordedTx = null;
+        OcrResult recordedOcr = null;
 
         for (String tool : plan.tools()) {
             try {
                 switch (tool) {
+                    case "recordExpense" -> {
+                        if (ocrService != null && financeService != null && userMessage != null && !userMessage.isBlank()) {
+                            OcrResult ocr = ocrService.extractFromText(userMessage);
+                            if (ocr != null && ocr.totalAmount() != null && ocr.totalAmount() > 0) {
+                                Transaction tx = buildTransaction(ocr);
+                                var dedup = financeService.checkDuplicate(ocr, null);
+                                if (dedup.hasDuplicate()) {
+                                    tx.setDuplicateWarning(dedup.warningMessage());
+                                }
+                                Transaction saved = financeService.save(tx);
+                                financeService.recordOcrScan(saved, ocr, null);
+                                recordedTx = saved;
+                                recordedOcr = ocr;
+                                data.put("recorded_expense", Map.of(
+                                        "id", saved.getId().toString(),
+                                        "amount", saved.getAmount(),
+                                        "currency", saved.getCurrency(),
+                                        "category", saved.getCategory(),
+                                        "merchant", saved.getMerchant() != null ? saved.getMerchant() : "",
+                                        "note", saved.getNote() != null ? saved.getNote() : ""
+                                ));
+                            }
+                        }
+                    }
                     case "syncGarminData" -> data.put("live_garmin_sync", assistantTools.syncGarminData());
                     case "getDailyHealth" -> data.put("daily_health_" + targetDate, assistantTools.getDailyHealth(targetDate));
                     case "getHealthReadiness" -> data.put("readiness_" + targetDate, assistantTools.getHealthReadiness(targetDate));
@@ -240,7 +324,25 @@ public class AssistantService {
                 log.warn("Failed executing tool {}: {}", tool, e.getMessage());
             }
         }
-        return data;
+        return new ExecutionResult(data, recordedTx, recordedOcr);
+    }
+
+    private Transaction buildTransaction(OcrResult ocr) {
+        Transaction tx = new Transaction();
+        LocalDate d = ocr.transactionDate() != null ? ocr.transactionDate() : temporalContext.currentDate();
+        tx.setTxDate(d);
+        tx.setTxTimestamp(d.atStartOfDay().atZone(java.time.ZoneId.of("Asia/Ho_Chi_Minh")).toOffsetDateTime());
+        tx.setInvoiceNumber(ocr.invoiceNumber());
+        tx.setAmount(ocr.totalAmount() != null ? ocr.totalAmount() : 0L);
+        tx.setCurrency(ocr.currency() != null ? ocr.currency() : "VND");
+        tx.setCategory(ocr.category() != null ? ocr.category() : "Other");
+        tx.setSpendType("FIXED".equalsIgnoreCase(ocr.spendType()) ? SpendType.FIXED : SpendType.DISCRETIONARY);
+        tx.setMerchant(ocr.merchant());
+        tx.setNote(ocr.note());
+        tx.setDocumentType(ocr.documentType());
+        tx.setSourcePlatform("manual");
+        tx.setConfirmed(false);
+        return tx;
     }
 
     private String buildSystemPrompt(LocalDate today,
@@ -290,9 +392,10 @@ public class AssistantService {
                 BEHAVIOR GUIDELINES:
                 1. Single Source of Truth: Use RETRIEVED GROUNDING DATA for all metrics. Never invent or falsify numbers.
                 2. User Persona: Strictly adhere to all address forms, pronouns, and preferences in USER PROFILE.
-                3. Language & Tone: Match the user's language (natural Vietnamese or English) and conversational vibe.
+                3. Language & Tone: Match the user's preferred language and conversational vibe.
                 4. Temporal Awareness: Interpret relative dates and greetings against CURRENT TEMPORAL CONTEXT (%s, %s).
                 5. Formatting: Format cleanly using standard Markdown (*bold*, lists, emojis).
+                6. Recorded Expenses: If "recorded_expense" is in RETRIEVED GROUNDING DATA, warmly confirm the logged transaction to the user clearly (amount, category, merchant).
                 """.formatted(temporalContext.getTimeOfDay(), temporalContext.getDayOfWeek()));
 
         return sb.toString();
@@ -317,6 +420,9 @@ public class AssistantService {
                 || t.contains("train") || t.contains("fatigue") || t.contains("tired")) {
             tools.add("getHealthReadiness");
         }
+        if (t.matches("(?i).*\\b\\d+([.,]\\d+)?\\s*(k|m|vnd|usd|eur|gbp|jpy)\\b.*") || t.matches(".*[$€£¥₫]\\s*\\d+.*")) {
+            tools.add("recordExpense");
+        }
         if (t.contains("money") || t.contains("spend") || t.contains("budget") || t.contains("burn")
                 || t.contains("allowance") || t.contains("expense") || t.contains("cost") || t.contains("bill")
                 || t.contains("rent") || t.contains("done")) {
@@ -340,11 +446,11 @@ public class AssistantService {
 
         // Direct greetings & pleasantries
         Set<String> trivialTokens = Set.of(
-                "hi", "hello", "hey", "alo", "chào", "chào bạn", "good morning", "good evening", "good afternoon",
-                "thanks", "thank you", "cảm ơn", "cảm ơn bạn", "tks", "thx",
-                "ok", "okay", "okie", "được rồi", "rõ rồi", "yes", "no", "vâng", "dạ", "uh",
-                "nice", "great", "cool", "tuyệt", "tuyệt vời", "bye", "tạm biệt",
-                "who are you", "bạn là ai", "what can you do", "bạn làm được gì"
+                "hi", "hello", "hey", "good morning", "good evening", "good afternoon",
+                "thanks", "thank you", "tks", "thx",
+                "ok", "okay", "okie", "yes", "no", "uh",
+                "nice", "great", "cool", "bye", "goodbye",
+                "who are you", "what can you do"
         );
         if (trivialTokens.contains(clean)) {
             return true;
@@ -356,12 +462,12 @@ public class AssistantService {
 
     private boolean hasDataOrMemoryKeywords(String clean) {
         String[] keywords = {
-                "sync", "watch", "garmin", "step", "bước", "run", "chạy", "walk", "đi bộ", "calorie", "kcal",
-                "heart", "tim", "hrv", "battery", "stress", "sleep", "ngủ", "nap", "readiness", "recovery",
-                "hồi phục", "weight", "cân", "kg", "scale",
-                "money", "tiền", "spend", "tiêu", "spent", "budget", "ngân sách", "burn", "expense", "cost",
-                "chi phí", "bill", "hóa đơn", "rent", "vnd", "dong", "đồng", "k", "đ",
-                "remember", "nhớ", "lưu", "tên tôi", "tên là", "prefer", "dị ứng", "allergic", "mục tiêu", "target"
+                "sync", "watch", "garmin", "step", "run", "walk", "calorie", "kcal",
+                "heart", "hrv", "battery", "stress", "sleep", "nap", "readiness", "recovery",
+                "weight", "kg", "scale", "lbs",
+                "money", "spend", "spent", "budget", "burn", "expense", "cost",
+                "bill", "rent", "k", "m", "usd", "eur", "vnd",
+                "remember", "prefer", "allergic", "goal", "target"
         };
         for (String kw : keywords) {
             if (clean.contains(kw)) {
