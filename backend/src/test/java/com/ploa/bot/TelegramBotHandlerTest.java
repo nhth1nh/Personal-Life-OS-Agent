@@ -109,4 +109,75 @@ class TelegramBotHandlerTest {
         assertThat(customHandler.isAllowed(999888777L)).isTrue();
         assertThat(customHandler.isAllowed(555555555L)).isFalse();
     }
+
+    @ParameterizedTest
+    @ValueSource(strings = {
+            "/expense 50k coffee",
+            "/pay 120k groceries",
+            "/spend 200k utility bill",
+            "invoice attached",
+            "receipt from grocery store",
+            "grocery checkout bill",
+            "hóa đơn tiền điện",
+            "phiếu thu tiền phòng",
+            "chuyển khoản VietQR"
+    })
+    @DisplayName("Captions explicitly indicating receipts/bills should be detected as expense intent")
+    void testImageExpenseIntentTrue(String caption) {
+        assertThat(handler.isImageExpenseIntent(caption))
+                .as("Caption should be treated as expense intent: %s", caption)
+                .isTrue();
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {
+            "How many calories in this pizza?",
+            "Is this meal healthy for my diet?",
+            "What do you think about this workout?",
+            "Look at this puppy",
+            "Nice sunset today"
+    })
+    @DisplayName("Captions asking questions or general life comments should NOT be detected as expense intent")
+    void testImageExpenseIntentFalse(String caption) {
+        assertThat(handler.isImageExpenseIntent(caption))
+                .as("Caption should NOT be treated as expense intent: %s", caption)
+                .isFalse();
+    }
+
+    @Test
+    @DisplayName("buildImageIntentMessage should generate 3 interactive buttons with correct callback data")
+    void testBuildImageIntentMessage() {
+        BotMessageFactory factory = new BotMessageFactory();
+        var msg = factory.buildImageIntentMessage(12345L, "test-uuid-123");
+
+        assertThat(msg.getText()).contains("What would you like to do with this image?");
+        var markup = (org.telegram.telegrambots.meta.api.objects.replykeyboard.InlineKeyboardMarkup) msg.getReplyMarkup();
+        assertThat(markup).isNotNull();
+        var rows = markup.getKeyboard();
+        assertThat(rows).hasSize(2);
+        assertThat(rows.get(0).get(0).getCallbackData()).isEqualTo("IMG_RECEIPT:test-uuid-123");
+        assertThat(rows.get(0).get(1).getCallbackData()).isEqualTo("IMG_CHAT:test-uuid-123");
+        assertThat(rows.get(1).get(0).getCallbackData()).isEqualTo("IMG_CANCEL:test-uuid-123");
+    }
+
+    @Test
+    @DisplayName("cleanupExpiredPendingImages should evict entries older than 30 minutes")
+    void testCleanupExpiredPendingImages() {
+        String oldId = "old-pending-id";
+        String freshId = "fresh-pending-id";
+
+        handler.pendingImages.put(oldId, new TelegramBotHandler.PendingImage(
+                new byte[0], "image/jpeg", 1L, null,
+                java.time.Instant.now().minus(35, java.time.temporal.ChronoUnit.MINUTES)
+        ));
+        handler.pendingImages.put(freshId, new TelegramBotHandler.PendingImage(
+                new byte[0], "image/jpeg", 2L, null,
+                java.time.Instant.now().minus(5, java.time.temporal.ChronoUnit.MINUTES)
+        ));
+
+        handler.cleanupExpiredPendingImages();
+
+        assertThat(handler.pendingImages).containsKey(freshId);
+        assertThat(handler.pendingImages).doesNotContainKey(oldId);
+    }
 }

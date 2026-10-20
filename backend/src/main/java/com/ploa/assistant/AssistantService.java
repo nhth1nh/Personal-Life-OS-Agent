@@ -453,7 +453,8 @@ public class AssistantService {
                 "thanks", "thank you", "tks", "thx",
                 "ok", "okay", "okie", "yes", "no", "uh",
                 "nice", "great", "cool", "bye", "goodbye",
-                "who are you", "what can you do"
+                "who are you", "what can you do",
+                "analyze image", "please analyze this image", "analyze this image"
         );
         if (trivialTokens.contains(clean)) {
             return true;
