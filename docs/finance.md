@@ -82,9 +82,10 @@ The financial engine guarantees mathematical integrity without generative halluc
    - `[✏️ Edit]`: Prompts user for natural language corrections.
    - `[🔄 Toggle Type]`: In-place toggle between `DISCRETIONARY` and `FIXED`.
    - `[🗑️ Delete]`: Discards the transaction and logs the discard event.
-3. **Conversational In-Place Refinement**:
-   - Users can swipe and directly reply to the transaction card with corrections (e.g. *"Amount is 45k, not 55k"*, *"Merchant is Starbucks"*).
-   - The AI refiner patches the draft transaction and edits the card in place without creating clutter.
+3. **Conversational In-Place Refinement & One-Word Confirmation**:
+   - Users can swipe and directly reply to the transaction card with corrections (e.g. *"Amount is 45k, not 55k"*, *"Merchant is Starbucks"*, *"This is rent money this month"*).
+   - The refiner patches the draft, updates the superseded card (`🔄 Draft updated below ⬇️`), and posts the revised card with full interactive buttons at the bottom of the chat.
+   - Alternatively, users can confirm a pending draft by simply replying or sending *"done"*, *"confirm"*, *"ok"*, or *"yes"*.
 4. **Pacing Inquiry**: Sending `/finance` outputs the current pacing overview:
    - Days elapsed / remaining
    - MTD Total, Fixed, and Discretionary spend

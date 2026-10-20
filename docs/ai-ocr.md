@@ -88,11 +88,12 @@ Prevents duplicate financial entries across three evaluation tiers:
 3. **Tier 3 (Fuzzy Triplet Match)**: Matches identical amount, transaction date, and merchant.
 - **User-Guided Resolution**: Instead of hard-blocking, the bot flags suspected duplicates with an explicit warning and offers `[✅ Confirm Anyway]` vs `[🗑️ Delete]`.
 
-### 4. Conversational In-Place Refinement
+### 4. Conversational In-Place Refinement & Seamless Confirmation
 If the OCR misreads an amount, merchant, or category:
-- Users can swipe and directly reply to the Telegram card (e.g. *"Amount is 45k, not 55k"* or *"Category is Coffee"*).
-- Or tap `[✏️ Edit]` for a quick guided prompt.
-- The `VisionOcrService.refineFromUserInstruction` patches the draft and re-renders the card in place.
+- **Natural Language Correction**: Users can swipe and directly reply to the Telegram card (e.g. *"Amount is 45k, not 55k"*, *"Category is Bills"*, or *"This is rent money this month"*), or tap `[✏️ Edit]` for guided input.
+- **Fresh Card Delivery**: The system updates the superseded message (`🔄 Draft updated below ⬇️`) and posts a new card with all interactive buttons directly at the bottom of the chat, keeping the `[✅ Confirm]` button visible and active.
+- **Conversational Confirmation**: Users can finalize the transaction by simply typing or replying *"done"*, *"confirm"*, *"ok"*, *"yes"*, or *"save"*, bypassing button clicks entirely.
+- **Audit Logging**: Every edit instruction is logged in `ocr_audits` with `user_notes` and an incremented `edit_count` to maintain empirical OCR accuracy metrics.
 
 ---
 
