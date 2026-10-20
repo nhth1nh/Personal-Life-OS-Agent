@@ -261,8 +261,7 @@ public class TelegramBotHandler implements SpringLongPollingBot, LongPollingUpda
             case "/sync" -> {
                 sendText(chatId, "⏳ *Pulling live data from Garmin Connect...*");
                 try {
-                    var rest = org.springframework.web.client.RestClient.create();
-                    rest.post().uri("http://garmin-puller:8081/pull").retrieve().toBodilessEntity();
+                    healthService.triggerGarminPull();
                     var m = healthService.getMetricsForDate(LocalDate.now());
                     String syncMsg = """
                             ✅ *Garmin Sync Complete!*
