@@ -17,6 +17,18 @@ public class Transaction {
     @Column(name = "tx_date", nullable = false)
     private LocalDate txDate;
 
+    @Column(name = "tx_timestamp")
+    private OffsetDateTime txTimestamp;
+
+    @Column(name = "image_sha256", length = 64)
+    private String imageSha256;
+
+    @Column(name = "invoice_number", length = 100)
+    private String invoiceNumber;
+
+    @Column(name = "duplicate_warning")
+    private String duplicateWarning;
+
     @Column(name = "amount", nullable = false)
     private Long amount;  // VND
 
@@ -73,6 +85,14 @@ public class Transaction {
     public UUID getId() { return id; }
     public LocalDate getTxDate() { return txDate; }
     public void setTxDate(LocalDate txDate) { this.txDate = txDate; }
+    public OffsetDateTime getTxTimestamp() { return txTimestamp; }
+    public void setTxTimestamp(OffsetDateTime txTimestamp) { this.txTimestamp = txTimestamp; }
+    public String getImageSha256() { return imageSha256; }
+    public void setImageSha256(String imageSha256) { this.imageSha256 = imageSha256; }
+    public String getInvoiceNumber() { return invoiceNumber; }
+    public void setInvoiceNumber(String invoiceNumber) { this.invoiceNumber = invoiceNumber; }
+    public String getDuplicateWarning() { return duplicateWarning; }
+    public void setDuplicateWarning(String duplicateWarning) { this.duplicateWarning = duplicateWarning; }
     public Long getAmount() { return amount; }
     public void setAmount(Long amount) { this.amount = amount; }
     public String getCurrency() { return currency; }

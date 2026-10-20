@@ -231,6 +231,7 @@ All protected endpoints accept authentication through any of the following metho
 | **GET** | `/api/v1/finance/burn-rate` | Retrieve month-to-date burn rate, remaining budget, and daily allowance. | *(None)* |
 | **GET** | `/api/v1/finance/transactions` | List confirmed and draft transactions for the current month. | `?limit=30` |
 | **POST** | `/api/v1/finance/ocr` | Upload and extract structured receipt data from an image file. | Multipart form-data `file=@receipt.jpg` |
+| **GET** | `/api/v1/finance/ocr/metrics` | Retrieve OCR stability KPIs (acceptance rate, edit rate, discard rate, confidence). | *(None)* |
 
 ### 3. AI Assistant & Memory
 | Method | Endpoint | Description | Query / Body |
