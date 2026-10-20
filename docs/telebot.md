@@ -12,14 +12,19 @@ flowchart TD
     Poller --> Guard["Chat ID Whitelist Security Guard\n(TELEGRAM_ALLOWED_CHAT_IDS)"]
 
     Guard --> Router{"Update Classifier"}
-    Router -->|Text starts with '/'| Commands["Command Handler\n(/health, /sync, /finance, /briefing, /help)"]
-    Router -->|Text with expense intent| QuickExpense["Text Expense Parser\n('50k coffee')"]
-    Router -->|Photo or Image Document| VisionOCR["Vision OCR Service\n(Receipt Extraction)"]
-    Router -->|Conversational Question| AI["AssistantService\n(Context-Grounded Chat)"]
+    Router -->|Text starts with '/'| Commands["Command Handler\n(/health, /sync, /finance, /briefing, /expense, /help)"]
+    Router -->|Conversational Text| AI["AssistantService.chatDetailed\n(Multilingual Tool Planner: recordExpense, health, memory)"]
+    Router -->|Photo with Question Caption| VisionChat["AssistantService.chatDetailed\n(Multimodal Vision Chat)"]
+    Router -->|Photo / Receipt Document| VisionOCR["Vision OCR Service\n(Receipt Extraction)"]
     Router -->|Callback Query| Callback["Inline Keyboard Handler\n(CONFIRM, TOGGLE_TYPE, DELETE)"]
 
-    Commands --> Formatter["TelegramFormatter\n(Markdown → Safe Telegram HTML)"]
-    AI --> Formatter
+    VisionOCR -->|Valid Financial Receipt| Card["Confirmation Card\n(Interactive Inline Keyboard)"]
+    VisionOCR -->|Non-Financial Image| VisionChat
+
+    AI -->|recordExpense invoked| Card
+    AI --> Formatter["TelegramFormatter\n(Markdown → Safe Telegram HTML)"]
+    VisionChat --> Formatter
+    Commands --> Formatter
     Formatter --> TelegramAPI["Telegram Client execute(SendMessage)"]
 ```
 
@@ -41,6 +46,7 @@ flowchart TD
 | `/finance` | Retrieves MTD spend, fixed vs discretionary split, daily burn rate, and safe daily allowance. | Financial pacing summary. |
 | `/briefing` | On-demand trigger for the AI morning briefing synthesizer (07:30). | Executive daily briefing text. |
 | `/evening` | On-demand trigger for the AI evening summary synthesizer (21:30). | Executive end-of-day recap text. |
+| `/expense <text>` | Explicit CLI trigger to log an expense (aliases: `/spend`, `/pay`). | Triggers OCR extraction and interactive confirmation card. |
 | `/new` | Resets the short-term conversation memory (`chat_messages`), starting a fresh chat session without erasing long-term profile preferences. | Confirmation message. |
 | `/help` | Displays command cheat-sheet and usage tips. | Help manual. |
 

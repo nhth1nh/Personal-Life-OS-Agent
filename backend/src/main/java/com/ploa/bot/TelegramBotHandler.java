@@ -50,6 +50,7 @@ public class TelegramBotHandler implements SpringLongPollingBot, LongPollingUpda
 
     private static final Logger log = LoggerFactory.getLogger(TelegramBotHandler.class);
     private static final ObjectMapper MAPPER = new ObjectMapper().findAndRegisterModules();
+    private static final long MAX_FILE_SIZE_BYTES = 20 * 1024 * 1024; // 20 MB cap to prevent OOM
 
     private final TelegramClient telegramClient;
     private final PloaProperties properties;
@@ -128,13 +129,18 @@ public class TelegramBotHandler implements SpringLongPollingBot, LongPollingUpda
     private void handlePhoto(Update update) throws TelegramApiException {
         long chatId = update.getMessage().getChatId();
         long msgId = update.getMessage().getMessageId();
-
-        sendText(chatId, "🔍 Analyzing receipt...");
+        String caption = update.getMessage().getCaption();
 
         // Get highest resolution photo
         PhotoSize photo = update.getMessage().getPhoto().stream()
                 .max(Comparator.comparingInt(PhotoSize::getFileSize))
                 .orElseThrow();
+
+        if (photo.getFileSize() != null && photo.getFileSize() > MAX_FILE_SIZE_BYTES) {
+            log.warn("Photo size {} bytes exceeds limit of {} bytes", photo.getFileSize(), MAX_FILE_SIZE_BYTES);
+            sendText(chatId, "❌ Image is too large (maximum allowable size is 20MB).");
+            return;
+        }
 
         // Download file bytes directly from Telegram to prevent remote mime-type mismatch
         File file = telegramClient.execute(GetFile.builder().fileId(photo.getFileId()).build());
@@ -147,32 +153,20 @@ public class TelegramBotHandler implements SpringLongPollingBot, LongPollingUpda
             return;
         }
 
-        String imageSha256 = computeSha256(photoBytes);
-        OcrResult ocr = ocrService.extractFromImage(photoBytes, "image/jpeg");
-        Transaction tx = buildTransaction(ocr, msgId, imageSha256);
-
-        var dedup = financeService.checkDuplicate(ocr, imageSha256);
-        if (dedup.hasDuplicate()) {
-            tx.setDuplicateWarning(dedup.warningMessage());
-        }
-
-        Transaction saved = financeService.save(tx);
-        financeService.recordOcrScan(saved, ocr, imageSha256);
-
-        SendMessage msg = messageFactory.buildConfirmationMessage(chatId, saved, ocr);
-        var sent = telegramClient.execute(msg);
-        if (sent != null) {
-            saved.setTelegramMsgId((long) sent.getMessageId());
-            financeService.save(saved);
-        }
+        processIncomingImage(chatId, msgId, photoBytes, "image/jpeg", caption);
     }
 
     private void handleDocumentPhoto(Update update) throws TelegramApiException {
         long chatId = update.getMessage().getChatId();
         long msgId = update.getMessage().getMessageId();
         Document doc = update.getMessage().getDocument();
+        String caption = update.getMessage().getCaption();
 
-        sendText(chatId, "🔍 Analyzing receipt document...");
+        if (doc.getFileSize() != null && doc.getFileSize() > MAX_FILE_SIZE_BYTES) {
+            log.warn("Document size {} bytes exceeds limit of {} bytes", doc.getFileSize(), MAX_FILE_SIZE_BYTES);
+            sendText(chatId, "❌ Document is too large (maximum allowable size is 20MB).");
+            return;
+        }
 
         File file = telegramClient.execute(GetFile.builder().fileId(doc.getFileId()).build());
         byte[] photoBytes;
@@ -187,24 +181,65 @@ public class TelegramBotHandler implements SpringLongPollingBot, LongPollingUpda
         String mime = (doc.getMimeType() != null && !doc.getMimeType().isBlank())
                 ? doc.getMimeType()
                 : "image/jpeg";
+        processIncomingImage(chatId, msgId, photoBytes, mime, caption);
+    }
+
+    private void processIncomingImage(long chatId, long msgId, byte[] photoBytes, String mimeType, String caption) throws TelegramApiException {
+        // If the caption explicitly indicates a conversational query or question rather than logging a receipt
+        if (isImageChatIntent(caption)) {
+            sendText(chatId, "🤔 *PLOA is analyzing your image...*");
+            AssistantService.ChatResult res = assistantService.chatDetailed(String.valueOf(chatId), caption, photoBytes, mimeType);
+            sendText(chatId, res.reply());
+            return;
+        }
+
+        // Otherwise, attempt OCR extraction as a receipt / payment document
+        sendText(chatId, "🔍 Analyzing document...");
         String imageSha256 = computeSha256(photoBytes);
-        OcrResult ocr = ocrService.extractFromImage(photoBytes, mime);
-        Transaction tx = buildTransaction(ocr, msgId, imageSha256);
+        OcrResult ocr = ocrService.extractFromImage(photoBytes, mimeType);
 
-        var dedup = financeService.checkDuplicate(ocr, imageSha256);
-        if (dedup.hasDuplicate()) {
-            tx.setDuplicateWarning(dedup.warningMessage());
+        // Check if the image actually contained a financial transaction
+        boolean isFinancialDocument = ocr != null
+                && ocr.totalAmount() != null
+                && ocr.totalAmount() > 0
+                && !"UNKNOWN".equalsIgnoreCase(ocr.documentType());
+
+        if (isFinancialDocument) {
+            Transaction tx = buildTransaction(ocr, msgId, imageSha256);
+            var dedup = financeService.checkDuplicate(ocr, imageSha256);
+            if (dedup.hasDuplicate()) {
+                tx.setDuplicateWarning(dedup.warningMessage());
+            }
+
+            Transaction saved = financeService.save(tx);
+            financeService.recordOcrScan(saved, ocr, imageSha256);
+
+            SendMessage msg = messageFactory.buildConfirmationMessage(chatId, saved, ocr);
+            var sent = telegramClient.execute(msg);
+            if (sent != null) {
+                saved.setTelegramMsgId((long) sent.getMessageId());
+                financeService.save(saved);
+            }
+        } else {
+            // Not a financial transaction! User sent an image to chat or consult with the assistant (food, workout, general).
+            log.info("Uploaded image is not a financial receipt (document_type={}, amount={}); routing to Assistant vision chat",
+                    ocr != null ? ocr.documentType() : null, ocr != null ? ocr.totalAmount() : null);
+            String prompt = (caption != null && !caption.isBlank())
+                    ? caption
+                    : "Please analyze this image in the context of my personal health, nutrition, fitness, or daily life.";
+            sendText(chatId, "🤔 *Not a financial receipt. Consulting Life OS Assistant...*");
+            AssistantService.ChatResult res = assistantService.chatDetailed(String.valueOf(chatId), prompt, photoBytes, mimeType);
+            sendText(chatId, res.reply());
         }
+    }
 
-        Transaction saved = financeService.save(tx);
-        financeService.recordOcrScan(saved, ocr, imageSha256);
-
-        SendMessage msg = messageFactory.buildConfirmationMessage(chatId, saved, ocr);
-        var sent = telegramClient.execute(msg);
-        if (sent != null) {
-            saved.setTelegramMsgId((long) sent.getMessageId());
-            financeService.save(saved);
+    boolean isImageChatIntent(String caption) {
+        if (caption == null || caption.isBlank()) return false;
+        String c = caption.trim().toLowerCase();
+        if (c.matches("(?i)^/(expense|pay|spend)\\b.*")) {
+            return false;
         }
+        return c.contains("?") || c.matches("(?i).*(what|how|why|should|can|could|is this|explain|help|calories?|workout|nutrition).*");
     }
 
     private boolean isImageDocument(Document doc) {
@@ -250,53 +285,64 @@ public class TelegramBotHandler implements SpringLongPollingBot, LongPollingUpda
             }
         }
 
-        if (isExpenseIntent(text)) {
-            // Quick expense: "50k coffee", "45k lunch"
-            sendText(chatId, "💬 Parsing expense...");
-            OcrResult ocr = ocrService.extractFromText(text);
-            Transaction tx = buildTransaction(ocr, null, null);
+        // All natural conversational text routes to AssistantService (Option 1: Multilingual Agent)
+        sendText(chatId, "🤔 *PLOA is thinking...*");
+        AssistantService.ChatResult result = assistantService.chatDetailed(String.valueOf(chatId), text);
+        sendText(chatId, result.reply());
 
-            var dedup = financeService.checkDuplicate(ocr, null);
-            if (dedup.hasDuplicate()) {
-                tx.setDuplicateWarning(dedup.warningMessage());
-            }
-
-            Transaction saved = financeService.save(tx);
-            financeService.recordOcrScan(saved, ocr, null);
-
-            SendMessage msg = messageFactory.buildConfirmationMessage(chatId, saved, ocr);
+        if (result.recordedTransaction() != null) {
+            Transaction saved = result.recordedTransaction();
+            SendMessage msg = messageFactory.buildConfirmationMessage(chatId, saved, result.ocrResult());
             var sent = telegramClient.execute(msg);
             if (sent != null) {
                 saved.setTelegramMsgId((long) sent.getMessageId());
                 financeService.save(saved);
             }
-        } else {
-            // Life OS AI Assistant chat!
-            sendText(chatId, "🤔 *PLOA is thinking...*");
-            String reply = assistantService.chat(String.valueOf(chatId), text);
-            sendText(chatId, reply);
         }
     }
 
-    private boolean isExpenseIntent(String text) {
-        String t = text.trim();
-        // Explicit expense command
-        if (t.matches("(?i)^/(expense|spend|pay)\\s+.*")) return true;
-        // If it looks like a question or conversational prompt, treat as chat
-        if (t.contains("?") || t.matches("(?i).*(what|how|why|should|can i|is it|status|overview|tell me|explain|hello|hi).*")) {
-            return false;
+    void processExpenseText(long chatId, String text, boolean isExplicitCommand) throws TelegramApiException {
+        OcrResult ocr = ocrService.extractFromText(text);
+
+        if (ocr.totalAmount() == null || ocr.totalAmount() <= 0) {
+            if (isExplicitCommand) {
+                sendText(chatId, "⚠️ Could not detect a valid expense amount from: `" + text + "`. Example: `/expense 50k coffee`");
+            } else {
+                log.info("Text OCR returned non-positive amount ({}) for text '{}'; routing to assistant chat",
+                        ocr.totalAmount(), text);
+                sendText(chatId, "🤔 *PLOA is thinking...*");
+                String reply = assistantService.chat(String.valueOf(chatId), text);
+                sendText(chatId, reply);
+            }
+            return;
         }
-        // Typical expense patterns:
-        // 1. Contains a number + currency token: "50k", "200k", "1.5m", "100 usd", "50 vnd"
-        // 2. Starts with number + space + text: "50 coffee"
-        return t.matches("(?i).*\\b\\d+([.,]\\d+)?\\s*(k|vnd|usd|eur|m)?\\b.*")
-                || t.matches("^\\d+([.,]\\d+)?\\s+[a-zA-Z].*");
+
+        Transaction tx = buildTransaction(ocr, null, null);
+
+        var dedup = financeService.checkDuplicate(ocr, null);
+        if (dedup.hasDuplicate()) {
+            tx.setDuplicateWarning(dedup.warningMessage());
+        }
+
+        Transaction saved = financeService.save(tx);
+        financeService.recordOcrScan(saved, ocr, null);
+
+        SendMessage msg = messageFactory.buildConfirmationMessage(chatId, saved, ocr);
+        var sent = telegramClient.execute(msg);
+        if (sent != null) {
+            saved.setTelegramMsgId((long) sent.getMessageId());
+            financeService.save(saved);
+        }
     }
 
     // ── Command handler ───────────────────────────────────────────────────────
 
     private void handleCommand(long chatId, String command) throws TelegramApiException {
-        switch (command.split("@")[0].toLowerCase()) {
+        String[] parts = command.trim().split("\\s+", 2);
+        String baseCmd = parts[0].split("@")[0].toLowerCase();
+        String args = parts.length > 1 ? parts[1].trim() : "";
+
+        switch (baseCmd) {
             case "/start", "/help" -> sendText(chatId, messageFactory.helpText());
             case "/new", "/reset" -> {
                 assistantService.clearChatHistory(String.valueOf(chatId));
@@ -351,6 +397,13 @@ public class TelegramBotHandler implements SpringLongPollingBot, LongPollingUpda
                 } catch (Exception e) {
                     log.error("Telegram /sync failed: {}", e.getMessage());
                     sendText(chatId, "❌ Failed to sync from Garmin: " + e.getMessage());
+                }
+            }
+            case "/expense", "/spend", "/pay" -> {
+                if (args.isBlank()) {
+                    sendText(chatId, "⚠️ Please specify an amount and description. Example: `/expense 50k coffee`");
+                } else {
+                    processExpenseText(chatId, args, true);
                 }
             }
             default -> sendText(chatId, "Unknown command. Try /help");
@@ -452,7 +505,7 @@ public class TelegramBotHandler implements SpringLongPollingBot, LongPollingUpda
     private boolean isConfirmationIntent(String text) {
         if (text == null) return false;
         String t = text.trim().toLowerCase();
-        return t.matches("^(confirm|yes|ok|okay|done|save|correct|accurate|proceed|looks good|accept|luu|chuan|duyet|dong y|duoc)$");
+        return t.matches("^(confirm|yes|ok|okay|done|save|correct|accurate|proceed|looks good|accept)$");
     }
 
     private String formatVnd(Long amount) {

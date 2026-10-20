@@ -84,7 +84,7 @@ class AssistantServiceTest {
                 }
                 """;
 
-        AssistantService assistantService = new AssistantService(null, null, null, org.mockito.Mockito.mock(org.springframework.ai.chat.client.ChatClient.Builder.class));
+        AssistantService assistantService = new AssistantService(null, null, null, org.mockito.Mockito.mock(org.springframework.ai.chat.client.ChatClient.Builder.class), null, null, null);
         AssistantService.ToolPlan plan = assistantService.parseToolPlan(json);
 
         assertThat(plan.tools()).containsExactly("saveUserMemory");
@@ -97,26 +97,42 @@ class AssistantServiceTest {
     @Test
     @DisplayName("Should skip tool planning for greetings, acknowledgments, and pleasantries")
     void shouldSkipToolPlanningForPleasantries() {
-        AssistantService assistantService = new AssistantService(null, null, null, org.mockito.Mockito.mock(org.springframework.ai.chat.client.ChatClient.Builder.class));
+        AssistantService assistantService = new AssistantService(null, null, null, org.mockito.Mockito.mock(org.springframework.ai.chat.client.ChatClient.Builder.class), null, null, null);
 
         assertThat(assistantService.shouldSkipToolPlanning("Hello")).isTrue();
-        assertThat(assistantService.shouldSkipToolPlanning("Chào bạn!")).isTrue();
+        assertThat(assistantService.shouldSkipToolPlanning("Hey")).isTrue();
         assertThat(assistantService.shouldSkipToolPlanning("thanks")).isTrue();
-        assertThat(assistantService.shouldSkipToolPlanning("cảm ơn nha")).isTrue();
+        assertThat(assistantService.shouldSkipToolPlanning("thank you")).isTrue();
         assertThat(assistantService.shouldSkipToolPlanning("ok")).isTrue();
         assertThat(assistantService.shouldSkipToolPlanning("got it")).isTrue();
-        assertThat(assistantService.shouldSkipToolPlanning("Bạn là ai?")).isTrue();
+        assertThat(assistantService.shouldSkipToolPlanning("Who are you?")).isTrue();
     }
 
     @Test
     @DisplayName("Should NOT skip tool planning when user asks for metrics, tools, or memory")
     void shouldNotSkipToolPlanningForDomainQueries() {
-        AssistantService assistantService = new AssistantService(null, null, null, org.mockito.Mockito.mock(org.springframework.ai.chat.client.ChatClient.Builder.class));
+        AssistantService assistantService = new AssistantService(null, null, null, org.mockito.Mockito.mock(org.springframework.ai.chat.client.ChatClient.Builder.class), null, null, null);
 
-        assertThat(assistantService.shouldSkipToolPlanning("Hôm nay tôi chạy được bao nhiêu bước?")).isFalse();
+        assertThat(assistantService.shouldSkipToolPlanning("How many steps did I take today?")).isFalse();
         assertThat(assistantService.shouldSkipToolPlanning("How much did I spend today?")).isFalse();
         assertThat(assistantService.shouldSkipToolPlanning("Check my sleep from last night")).isFalse();
         assertThat(assistantService.shouldSkipToolPlanning("Sync my watch")).isFalse();
         assertThat(assistantService.shouldSkipToolPlanning("Remember that my name is Alex")).isFalse();
+    }
+
+    @Test
+    @DisplayName("Should parse tool plan with recordExpense")
+    void shouldParseRecordExpenseToolPlan() throws Exception {
+        String json = """
+                {
+                  "tools": ["recordExpense"],
+                  "date": "today"
+                }
+                """;
+        AssistantService assistantService = new AssistantService(null, null, null, org.mockito.Mockito.mock(org.springframework.ai.chat.client.ChatClient.Builder.class), null, null, null);
+        AssistantService.ToolPlan plan = assistantService.parseToolPlan(json);
+
+        assertThat(plan.tools()).containsExactly("recordExpense");
+        assertThat(plan.date()).isEqualTo("today");
     }
 }

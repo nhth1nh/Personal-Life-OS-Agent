@@ -22,8 +22,12 @@ flowchart LR
 
 1. **Telegram Photo Upload**: Compressed image uploaded from mobile/desktop photo gallery.
 2. **Telegram Document Photo**: Uncompressed image file sent as an attachment.
-3. **Natural Text Description**: Quick text notes like `50k coffee highlands`, `120k groceries winmart`, `200k electricity bill`.
-4. **Multipart REST API (`POST /api/v1/finance/ocr`)**: Direct file upload from curl, Postman, or external automations.
+3. **Natural Text Description**: Quick text notes like `50k coffee highlands`, `120k groceries winmart`, `200k electricity bill` (conversationally resolved via `AssistantService.recordExpense` across any language).
+4. **Explicit Slash Command**: `/expense 50k coffee` or `/pay 120k groceries` for deterministic text logging.
+5. **Multipart REST API (`POST /api/v1/finance/ocr`)**: Direct file upload from curl, Postman, or external automations.
+
+> [!NOTE]
+> **Intelligent Image Disambiguation**: If an uploaded photo is accompanied by a conversational query (e.g., *"How many calories in this meal?"*), or if OCR determines the image is not a financial document (`document_type: UNKNOWN`), PLOA automatically routes the image to `AssistantService` for multimodal health/nutrition chat rather than saving an empty 0 VND transaction.
 
 ---
 
@@ -75,10 +79,10 @@ HTTP 400 - Unsupported MIME type: application/octet-stream
 - In `TelegramBotHandler`, the MIME type is proactively resolved from the Telegram `Document` or defaulted to `image/jpeg` for photo streams.
 - The byte array is wrapped in a custom `ByteArrayResource` with an overridden `getFilename()` returning a `.jpg` or `.png` extension, ensuring Spring AI propagates the exact `image/jpeg` MIME type to the LLM endpoint.
 
-### 2. Multi-Currency & Vietnamese Slang Normalization
-- Supports shorthand currency notations common in Vietnam:
-  - `50k` $\rightarrow 50,000$ VND
-  - `1.5tr` / `1.5m` $\rightarrow 1,500,000$ VND
+### 2. Multi-Currency & Shorthand Notation Normalization
+- Supports shorthand currency notations across various denominations:
+  - `50k` $\rightarrow 50,000$
+  - `1.5m` $\rightarrow 1,500,000$
   - Handles comma/dot thousands separators accurately (`50.000` vs `50,000`).
 
 ### 3. Multi-Tier Bill Deduplication

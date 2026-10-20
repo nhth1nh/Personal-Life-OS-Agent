@@ -276,11 +276,12 @@ All protected endpoints accept authentication through any of the following metho
 | `/finance` | View month-to-date spending pace, remaining budget, and safe daily allowance. |
 | `/briefing` | On-demand trigger to generate and deliver the morning briefing to your chat (07:30). |
 | `/evening` | On-demand trigger to generate and deliver the complete daily evening summary (21:30). |
+| `/expense <text>` | Explicit CLI trigger to log an expense (e.g. `/expense 50k coffee`). |
 | `/new` | Clear short-term chat memory to start a fresh conversation session. |
 | `/help` | Display command cheat-sheet and quick-start instructions. |
-| **Photo / Receipt** | Automatically triggers Vision OCR entity extraction and draft creation. |
-| **Text Expense** | E.g. `50k coffee`, `120k groceries` $\rightarrow$ parses into structured ledger. |
-| **Chat / Question** | E.g. *"Can I do heavy lifting today?"* $\rightarrow$ routes to AI Assistant. |
+| **Photo / Receipt** | Financial documents trigger Vision OCR entity extraction and draft creation. |
+| **Photo / Visual Chat** | Non-financial images (food, workouts, questions) automatically route to the AI Assistant for multimodal vision analysis. |
+| **Natural Chat & Expenses** | General chat (*"How did I sleep?"*, *"50k coffee"*, *"Lunch was 45k"*) routes through the multilingual AI Assistant. |
 
 ---
 
