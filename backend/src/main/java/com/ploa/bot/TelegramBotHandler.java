@@ -16,6 +16,7 @@ import org.springframework.stereotype.Component;
 import org.telegram.telegrambots.client.okhttp.OkHttpTelegramClient;
 import org.telegram.telegrambots.longpolling.interfaces.LongPollingUpdateConsumer;
 import org.telegram.telegrambots.longpolling.starter.SpringLongPollingBot;
+import org.telegram.telegrambots.meta.api.methods.AnswerCallbackQuery;
 import org.telegram.telegrambots.meta.api.methods.GetFile;
 import org.telegram.telegrambots.meta.api.methods.send.SendMessage;
 import org.telegram.telegrambots.meta.api.methods.updatingmessages.EditMessageText;
@@ -229,7 +230,22 @@ public class TelegramBotHandler implements SpringLongPollingBot, LongPollingUpda
             long repliedMsgId = replyTo.getMessageId();
             var pendingTxOpt = financeService.findByTelegramMsgId(repliedMsgId);
             if (pendingTxOpt.isPresent() && !pendingTxOpt.get().isConfirmed()) {
+                if (isConfirmationIntent(text)) {
+                    confirmAndNotify(chatId, (int) repliedMsgId, pendingTxOpt.get());
+                    return;
+                }
                 handleTransactionRefinement(chatId, (int) repliedMsgId, pendingTxOpt.get(), text);
+                return;
+            }
+        }
+
+        // Conversational confirmation without explicit reply if there is an active pending transaction
+        if (isConfirmationIntent(text)) {
+            var pendingList = financeService.getPendingTransactions();
+            if (!pendingList.isEmpty()) {
+                Transaction latestPending = pendingList.get(0);
+                int cardMsgId = latestPending.getTelegramMsgId() != null ? latestPending.getTelegramMsgId().intValue() : 0;
+                confirmAndNotify(chatId, cardMsgId, latestPending);
                 return;
             }
         }
@@ -351,6 +367,15 @@ public class TelegramBotHandler implements SpringLongPollingBot, LongPollingUpda
 
         if (!isAllowed(chatId)) return;
 
+        // Immediately acknowledge callback query to avoid button spinning/freezing in Telegram client
+        try {
+            telegramClient.execute(AnswerCallbackQuery.builder()
+                    .callbackQueryId(cb.getId())
+                    .build());
+        } catch (Exception e) {
+            log.debug("Failed to answer callback query: {}", e.getMessage());
+        }
+
         String[] parts = data.split(":");
         String action = parts[0];
         UUID txId = UUID.fromString(parts[1]);
@@ -369,7 +394,7 @@ public class TelegramBotHandler implements SpringLongPollingBot, LongPollingUpda
                 if (txOpt.isPresent()) {
                     Transaction tx = txOpt.get();
                     SendMessage card = messageFactory.buildConfirmationMessage(chatId, tx, null);
-                    String editPrompt = card.getText() + "\n\n✏️ <i>To update: Swipe and reply directly to this card with your changes (e.g. 'amount 45k', 'merchant Starbucks', 'category Food').</i>";
+                    String editPrompt = card.getText() + "\n\n✏️ <b>Edit Mode:</b> Swipe & reply directly to this card with your correction (e.g. <i>'amount 45k'</i>, <i>'category Food'</i>), or tap <b>[✅ Confirm]</b> when ready.";
                     telegramClient.execute(EditMessageText.builder()
                             .chatId(chatId)
                             .messageId(msgId)
@@ -396,21 +421,43 @@ public class TelegramBotHandler implements SpringLongPollingBot, LongPollingUpda
             OcrResult refined = ocrService.refineFromUserInstruction(tx, instruction);
             Transaction updated = financeService.applyCorrection(tx.getId(), refined, instruction);
 
-            SendMessage newCard = messageFactory.buildConfirmationMessage(chatId, updated, refined);
-            telegramClient.execute(EditMessageText.builder()
-                    .chatId(chatId)
-                    .messageId(cardMsgId)
-                    .text(newCard.getText())
-                    .parseMode("HTML")
-                    .replyMarkup((InlineKeyboardMarkup) newCard.getReplyMarkup())
-                    .build());
+            // Update old card message to indicate it has been revised
+            try {
+                editText(chatId, cardMsgId, "🔄 <i>Draft updated below ⬇️</i>");
+            } catch (Exception ignored) {}
 
-            String formattedAmount = java.text.NumberFormat.getInstance(new java.util.Locale("vi", "VN")).format(updated.getAmount());
-            sendText(chatId, "✅ *Transaction updated!* Amount: *" + formattedAmount + " VND* (Merchant: *" + updated.getMerchant() + "*). Tap Confirm when ready.");
+            // Send fresh confirmation card with all interactive buttons AT THE BOTTOM of the chat
+            SendMessage newCard = messageFactory.buildConfirmationMessage(chatId, updated, refined);
+            var sent = telegramClient.execute(newCard);
+            if (sent != null) {
+                updated.setTelegramMsgId((long) sent.getMessageId());
+                financeService.save(updated);
+            }
         } catch (Exception e) {
             log.error("Failed to refine transaction: {}", e.getMessage(), e);
             sendText(chatId, "❌ Could not update transaction: " + e.getMessage());
         }
+    }
+
+    private void confirmAndNotify(long chatId, int cardMsgId, Transaction tx) throws TelegramApiException {
+        financeService.confirm(tx.getId());
+        if (cardMsgId > 0) {
+            try {
+                editText(chatId, cardMsgId, "✅ <b>Transaction Confirmed!</b>\nAmount: " + formatVnd(tx.getAmount()) + " VND (" + tx.getCategory() + ")");
+            } catch (Exception ignored) {}
+        }
+        sendText(chatId, "✅ *Transaction confirmed!* " + formatVnd(tx.getAmount()) + " VND for *" + (tx.getMerchant() != null ? tx.getMerchant() : tx.getCategory()) + "* has been locked into your ledger.");
+    }
+
+    private boolean isConfirmationIntent(String text) {
+        if (text == null) return false;
+        String t = text.trim().toLowerCase();
+        return t.matches("^(confirm|yes|ok|okay|done|save|correct|accurate|proceed|looks good|accept|luu|chuan|duyet|dong y|duoc)$");
+    }
+
+    private String formatVnd(Long amount) {
+        if (amount == null) return "0";
+        return java.text.NumberFormat.getInstance(new java.util.Locale("vi", "VN")).format(amount);
     }
 
     // ── Helpers ───────────────────────────────────────────────────────────────

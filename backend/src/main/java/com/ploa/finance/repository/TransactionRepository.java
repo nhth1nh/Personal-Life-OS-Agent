@@ -49,6 +49,8 @@ public interface TransactionRepository extends JpaRepository<Transaction, UUID> 
 
     java.util.Optional<Transaction> findFirstByTelegramMsgId(Long telegramMsgId);
 
+    List<Transaction> findByConfirmedFalseOrderByCreatedAtDesc();
+
     java.util.Optional<Transaction> findFirstByImageSha256(String imageSha256);
 
     List<Transaction> findByInvoiceNumberIgnoreCaseAndMerchantIgnoreCase(String invoiceNumber, String merchant);

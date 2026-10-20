@@ -103,6 +103,7 @@ public class AssistantService {
                 - "getWeightTrend": Latest weight, 7-day EMA trend, distance to target weight.
                 - "getFinancialStatus": Monthly budget, MTD spend, daily burn rate, safe daily allowance, savings rate.
                 - "getRecentTransactions": List of recent individual expense transactions.
+                - "getPendingTransactions": List of unconfirmed or pending draft transactions awaiting user confirmation.
                 - "saveUserMemory": CRITICAL for personalization. Call this whenever the user shares or instructs any long-term preference, persona/tone rule, pronoun/form of address, nickname, communication style, dietary rule, fitness goal, or personal profile fact.
                 
                 RULES:
@@ -165,6 +166,7 @@ public class AssistantService {
                     case "getWeightTrend" -> data.put("weight_trend", assistantTools.getWeightTrend());
                     case "getFinancialStatus" -> data.put("financial_status", assistantTools.getFinancialStatus());
                     case "getRecentTransactions" -> data.put("recent_transactions", assistantTools.getRecentTransactions(5));
+                    case "getPendingTransactions" -> data.put("pending_transactions", assistantTools.getPendingTransactions());
                     case "saveUserMemory" -> {
                         if (plan.memory() != null && plan.memory().key() != null) {
                             String res = assistantTools.saveUserMemory(
@@ -263,8 +265,10 @@ public class AssistantService {
             tools.add("getHealthReadiness");
         }
         if (t.contains("money") || t.contains("spend") || t.contains("budget") || t.contains("burn")
-                || t.contains("allowance") || t.contains("expense") || t.contains("cost")) {
+                || t.contains("allowance") || t.contains("expense") || t.contains("cost") || t.contains("bill")
+                || t.contains("rent") || t.contains("done")) {
             tools.add("getFinancialStatus");
+            tools.add("getPendingTransactions");
         }
         if (t.contains("weight") || t.contains("scale") || t.contains("kg") || t.contains("lbs")) {
             tools.add("getWeightTrend");

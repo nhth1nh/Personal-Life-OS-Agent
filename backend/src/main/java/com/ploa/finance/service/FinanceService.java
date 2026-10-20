@@ -258,6 +258,11 @@ public class FinanceService {
     }
 
     @Transactional(readOnly = true)
+    public List<Transaction> getPendingTransactions() {
+        return repo.findByConfirmedFalseOrderByCreatedAtDesc();
+    }
+
+    @Transactional(readOnly = true)
     public List<Transaction> getTransactionsForDate(LocalDate date) {
         LocalDate target = date != null ? date : LocalDate.now();
         return repo.findByTxDateBetweenOrderByTxDateDesc(target, target);
