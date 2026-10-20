@@ -1,12 +1,6 @@
 package com.ploa.health.service;
 
-import java.time.LocalDate;
-
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
-
+import com.ploa.config.PloaProperties;
 import com.ploa.health.api.dto.HealthSyncRequest;
 import com.ploa.health.engine.ReadinessEngine;
 import com.ploa.health.engine.SleepEngine;
@@ -16,6 +10,15 @@ import com.ploa.health.engine.dto.SleepResult;
 import com.ploa.health.engine.dto.WeightEmaResult;
 import com.ploa.health.model.HealthMetric;
 import com.ploa.health.repository.HealthMetricRepository;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.http.client.SimpleClientHttpRequestFactory;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.client.RestClient;
+
+import java.time.Duration;
+import java.time.LocalDate;
 
 @Service
 public class HealthService {
@@ -26,15 +29,26 @@ public class HealthService {
     private final ReadinessEngine readinessEngine;
     private final WeightEmaEngine weightEmaEngine;
     private final SleepEngine sleepEngine;
+    private final PloaProperties properties;
+    private final RestClient restClient;
 
     public HealthService(HealthMetricRepository repo,
                          ReadinessEngine readinessEngine,
                          WeightEmaEngine weightEmaEngine,
-                         SleepEngine sleepEngine) {
+                         SleepEngine sleepEngine,
+                         PloaProperties properties) {
         this.repo = repo;
         this.readinessEngine = readinessEngine;
         this.weightEmaEngine = weightEmaEngine;
         this.sleepEngine = sleepEngine;
+        this.properties = properties;
+
+        SimpleClientHttpRequestFactory factory = new SimpleClientHttpRequestFactory();
+        factory.setConnectTimeout(Duration.ofSeconds(5));
+        factory.setReadTimeout(Duration.ofSeconds(30));
+        this.restClient = RestClient.builder()
+                .requestFactory(factory)
+                .build();
     }
 
     /**
@@ -112,9 +126,13 @@ public class HealthService {
      */
     public boolean triggerGarminPull() {
         try {
-            var rest = org.springframework.web.client.RestClient.create();
-            rest.post()
+            String apiKey = (properties != null && properties.security() != null)
+                    ? properties.security().apiKey()
+                    : "";
+            log.info("Triggering Garmin pull on :8081 (API key configured: {})", apiKey != null && !apiKey.isBlank());
+            restClient.post()
                     .uri("http://garmin-puller:8081/pull")
+                    .header("X-API-Key", apiKey != null ? apiKey.trim() : "")
                     .retrieve()
                     .toBodilessEntity();
             log.info("Garmin on-demand pull successfully completed");

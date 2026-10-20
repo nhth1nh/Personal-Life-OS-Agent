@@ -5,6 +5,9 @@ import com.ploa.ai.dto.OcrResult;
 import com.ploa.finance.engine.dto.BurnRateResult;
 import com.ploa.finance.model.Transaction;
 import com.ploa.finance.service.FinanceService;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -16,6 +19,9 @@ import java.util.List;
 @RestController
 @RequestMapping("/api/v1/finance")
 public class FinanceController {
+
+    private static final Logger log = LoggerFactory.getLogger(FinanceController.class);
+    private static final long MAX_OCR_FILE_SIZE = 20 * 1024 * 1024; // 20 MB cap
 
     private final FinanceService financeService;
     private final VisionOcrService ocrService;
@@ -56,6 +62,13 @@ public class FinanceController {
     @PostMapping(value = "/ocr", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public ResponseEntity<OcrResult> parseReceiptImage(
             @RequestParam("file") MultipartFile file) throws IOException {
+        if (file.isEmpty()) {
+            return ResponseEntity.badRequest().build();
+        }
+        if (file.getSize() > MAX_OCR_FILE_SIZE) {
+            log.warn("Rejected OCR upload: size {} bytes exceeds limit of {} bytes", file.getSize(), MAX_OCR_FILE_SIZE);
+            return ResponseEntity.status(HttpStatus.PAYLOAD_TOO_LARGE).build();
+        }
         String mimeType = file.getContentType() != null ? file.getContentType() : "image/jpeg";
         OcrResult result = ocrService.extractFromImage(file.getBytes(), mimeType);
         return ResponseEntity.ok(result);

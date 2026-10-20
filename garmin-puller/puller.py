@@ -189,19 +189,24 @@ def pull_and_sync(target_date: date | None = None) -> bool:
 
     # ── POST to backend ──────────────────────────────────────────────────────
     log.info(f"Syncing comprehensive payload to backend (fields: {list(payload.keys())})")
-    try:
-        response = requests.post(
-            BACKEND_URL,
-            json=payload,
-            headers={"X-API-Key": API_SECRET_KEY, "Content-Type": "application/json"},
-            timeout=30,
-        )
-        response.raise_for_status()
-        log.info(f"Sync successful: {response.status_code}")
-        return True
-    except requests.RequestException as e:
-        log.error(f"Backend sync failed: {e}")
-        return False
+    for attempt in range(1, 4):
+        try:
+            response = requests.post(
+                BACKEND_URL,
+                json=payload,
+                headers={"X-API-Key": API_SECRET_KEY.strip(), "Content-Type": "application/json"},
+                timeout=30,
+            )
+            response.raise_for_status()
+            log.info(f"Sync successful: {response.status_code}")
+            return True
+        except requests.RequestException as e:
+            if attempt < 3:
+                log.warning(f"Backend sync attempt {attempt} failed ({e}), retrying in 3s...")
+                time.sleep(3)
+            else:
+                log.error(f"Backend sync failed after {attempt} attempts: {e}")
+                return False
 
 
 def sync_daily():
@@ -229,6 +234,20 @@ class PullHandler(BaseHTTPRequestHandler):
             self.wfile.write(b'{"status":"ready"}')
 
     def handle_trigger(self):
+        if API_SECRET_KEY and API_SECRET_KEY.strip():
+            req_key = self.headers.get("X-API-Key", "")
+            if not req_key:
+                auth = self.headers.get("Authorization", "")
+                if auth.startswith("Bearer "):
+                    req_key = auth[7:].strip()
+            if not req_key or req_key.strip() != API_SECRET_KEY.strip():
+                log.warning("Unauthorized trigger attempt on :8081/pull (invalid or missing X-API-Key)")
+                self.send_response(401)
+                self.send_header("Content-Type", "application/json")
+                self.end_headers()
+                self.wfile.write(b'{"error":"Unauthorized"}')
+                return
+
         log.info("HTTP trigger received: initiating instant Garmin pull...")
         success = pull_and_sync(date.today())
         self.send_response(200 if success else 500)

@@ -76,4 +76,37 @@ class TelegramBotHandlerTest {
         assertThat(handler.isImageChatIntent("")).isFalse();
         assertThat(handler.isImageChatIntent("   ")).isFalse();
     }
+
+    @Test
+    @DisplayName("Empty allowed chat ID list should fail closed and reject all chat IDs")
+    void testIsAllowedEmptyFailsClosed() {
+        PloaProperties emptyProps = new PloaProperties(
+                null, null, null,
+                new PloaProperties.Telegram("token", "user", ""),
+                null, null
+        );
+        TelegramBotHandler emptyHandler = new TelegramBotHandler(
+                emptyProps, null, null, null, null, null, null
+        );
+
+        assertThat(emptyHandler.isAllowed(123456789L)).isFalse();
+        assertThat(emptyHandler.isAllowed(987654321L)).isFalse();
+    }
+
+    @Test
+    @DisplayName("Configured allowed chat ID list should permit whitelisted and block unknown IDs")
+    void testIsAllowedWithConfiguredWhitelist() {
+        PloaProperties props = new PloaProperties(
+                null, null, null,
+                new PloaProperties.Telegram("token", "user", "123456789,999888777"),
+                null, null
+        );
+        TelegramBotHandler customHandler = new TelegramBotHandler(
+                props, null, null, null, null, null, null
+        );
+
+        assertThat(customHandler.isAllowed(123456789L)).isTrue();
+        assertThat(customHandler.isAllowed(999888777L)).isTrue();
+        assertThat(customHandler.isAllowed(555555555L)).isFalse();
+    }
 }
