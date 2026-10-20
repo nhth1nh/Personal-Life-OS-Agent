@@ -95,6 +95,9 @@ If the OCR misreads an amount, merchant, or category:
 - **Conversational Confirmation**: Users can finalize the transaction by simply typing or replying *"done"*, *"confirm"*, *"ok"*, *"yes"*, or *"save"*, bypassing button clicks entirely.
 - **Audit Logging**: Every edit instruction is logged in `ocr_audits` with `user_notes` and an incremented `edit_count` to maintain empirical OCR accuracy metrics.
 
+### 5. Real-Time Temporal Grounding
+Every OCR prompt and refinement request receives the current real-time timestamp, date, and timezone. If an uploaded receipt or bank transfer screenshot prints only a day and month (e.g. `15/10` or `10:25`), the model correctly grounds the transaction to the current calendar year (`2026-10-15`) rather than inventing or defaulting to past years.
+
 ---
 
 ## 📡 REST API Reference

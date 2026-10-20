@@ -1,5 +1,6 @@
 package com.ploa.briefing;
 
+import com.ploa.ai.TemporalContext;
 import com.ploa.assistant.memory.MemoryService;
 import com.ploa.assistant.memory.UserMemory;
 import com.ploa.briefing.dto.DailyBriefingContext;
@@ -75,6 +76,7 @@ public class BriefingOrchestrator {
     private final HealthService healthService;
     private final FinanceService financeService;
     private final MemoryService memoryService;
+    private final TemporalContext temporalContext;
     private final ChatClient chatClient;
     private final PloaProperties properties;
     private TelegramClient telegramClient;
@@ -82,11 +84,13 @@ public class BriefingOrchestrator {
     public BriefingOrchestrator(HealthService healthService,
                                 FinanceService financeService,
                                 MemoryService memoryService,
+                                TemporalContext temporalContext,
                                 ChatClient.Builder chatClientBuilder,
                                 PloaProperties properties) {
         this.healthService = healthService;
         this.financeService = financeService;
         this.memoryService = memoryService;
+        this.temporalContext = temporalContext;
         this.chatClient = chatClientBuilder.build();
         this.properties = properties;
         String token = properties.telegram().botToken();
@@ -179,6 +183,8 @@ public class BriefingOrchestrator {
         var f = ctx.burnRate();
 
         return """
+                %s
+                
                 === DAILY MORNING BRIEFING DATA for %s ===
                 
                 --- HEALTH & RECOVERY ---
@@ -207,6 +213,7 @@ public class BriefingOrchestrator {
                 Days elapsed: %d / Days remaining: %d
                 Top categories: %s
                 """.formatted(
+                temporalContext.getFormattedPromptContext(),
                 ctx.date(),
                 r != null ? r.level() : "N/A",
                 fmt(r != null ? r.hrvRmssd() : null), fmt(r != null ? r.hrv30dMean() : null), fmt2(r != null ? r.hrvZScore() : null),
@@ -269,6 +276,8 @@ public class BriefingOrchestrator {
         }
 
         return """
+                %s
+                
                 === EVENING SUMMARY EMPIRICAL DATA for %s ===
                 
                 --- USER PROFILE & GOALS ---
@@ -302,6 +311,7 @@ public class BriefingOrchestrator {
                 Updated Safe Daily Allowance: %s VND/day
                 Days Remaining in Month: %d
                 """.formatted(
+                temporalContext.getFormattedPromptContext(),
                 today,
                 prof.toString(),
                 h != null && h.getSteps() != null ? String.format("%,d", h.getSteps()) : "N/A",

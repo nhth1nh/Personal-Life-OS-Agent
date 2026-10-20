@@ -58,9 +58,11 @@ public class VisionOcrService {
             """;
 
     private final ChatClient chatClient;
+    private final TemporalContext temporalContext;
 
-    public VisionOcrService(ChatClient.Builder chatClientBuilder) {
+    public VisionOcrService(ChatClient.Builder chatClientBuilder, TemporalContext temporalContext) {
         this.chatClient = chatClientBuilder.build();
+        this.temporalContext = temporalContext;
     }
 
     /**
@@ -113,7 +115,8 @@ public class VisionOcrService {
 
     private OcrResult executeOcr(Media media) throws Exception {
         UserMessage userMessage = UserMessage.builder()
-                .text("Extract the financial transaction from this image.")
+                .text("Extract the financial transaction from this image.\n\n" + temporalContext.getFormattedPromptContext() +
+                        "\nNote: If the document omits the year or full date, resolve relative dates using the current temporal context above.")
                 .media(media)
                 .build();
 
@@ -146,6 +149,8 @@ public class VisionOcrService {
         String prompt = """
                 You are updating a draft financial transaction based on the user's correction instruction.
                 
+                %s
+                
                 CURRENT TRANSACTION DRAFT:
                 - Merchant: %s
                 - Amount: %s %s
@@ -162,6 +167,7 @@ public class VisionOcrService {
                 For Vietnamese shorthand amounts: "45k" = 45000, "1.5m" = 1500000.
                 Return ONLY a valid JSON object matching the standard OCR schema.
                 """.formatted(
+                temporalContext.getFormattedPromptContext(),
                 current.getMerchant(),
                 current.getAmount(),
                 current.getCurrency(),
@@ -196,6 +202,8 @@ public class VisionOcrService {
     public OcrResult extractFromText(String text) {
         log.info("Parsing text expense: {}", text);
         String prompt = """
+                %s
+                
                 Parse this expense note into structured JSON.
                 Input: "%s"
                 
@@ -203,7 +211,7 @@ public class VisionOcrService {
                 - "50k" = 50000 VND
                 - "1.5m" = 1500000 VND
                 - "200" = 200 VND (assume literal if no unit)
-                """.formatted(text);
+                """.formatted(temporalContext.getFormattedPromptContext(), text);
         try {
             String raw = chatClient.prompt()
                     .system(OCR_SYSTEM_PROMPT)

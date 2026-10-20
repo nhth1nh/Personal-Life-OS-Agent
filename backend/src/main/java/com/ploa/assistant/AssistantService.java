@@ -2,6 +2,7 @@ package com.ploa.assistant;
 
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.ploa.ai.TemporalContext;
 import com.ploa.assistant.memory.ChatMessage;
 import com.ploa.assistant.memory.MemoryService;
 import com.ploa.assistant.memory.UserMemory;
@@ -28,13 +29,16 @@ public class AssistantService {
 
     private final AssistantTools assistantTools;
     private final MemoryService memoryService;
+    private final TemporalContext temporalContext;
     private final ChatClient chatClient;
 
     public AssistantService(AssistantTools assistantTools,
                             MemoryService memoryService,
+                            TemporalContext temporalContext,
                             ChatClient.Builder chatClientBuilder) {
         this.assistantTools = assistantTools;
         this.memoryService = memoryService;
+        this.temporalContext = temporalContext;
         this.chatClient = chatClientBuilder.build();
     }
 
@@ -54,8 +58,8 @@ public class AssistantService {
     }
 
     public String chat(String chatId, String userMessage) {
-        log.info("Assistant chat query received from [{}]: {}", chatId, userMessage);
-        LocalDate today = LocalDate.now();
+        log.info("Assistant chat query received from [{}] at {}: {}", chatId, temporalContext.getIsoTimestamp(), userMessage);
+        LocalDate today = temporalContext.currentDate();
 
         // 1. Record user turn in chat memory
         memoryService.saveChatMessage(chatId, "user", userMessage);
@@ -93,7 +97,8 @@ public class AssistantService {
         String plannerPrompt = """
                 You are the Tool Planner for the Personal Life OS Assistant.
                 Analyze the user's message and determine which specific data tools (if any) are required.
-                Today's date is %s.
+                
+                %s
                 
                 AVAILABLE TOOLS:
                 - "syncGarminData": Trigger an immediate live sync with Garmin Connect to pull up-to-the-second biometrics from the user's Garmin watch (steps, active calories, Body Battery, stress, heart rate). Call this ONLY when the user explicitly requests to sync, update, or refresh live data from their watch.
@@ -107,18 +112,19 @@ public class AssistantService {
                 - "saveUserMemory": CRITICAL for personalization. Call this whenever the user shares or instructs any long-term preference, persona/tone rule, pronoun/form of address, nickname, communication style, dietary rule, fitness goal, or personal profile fact.
                 
                 RULES:
-                1. "syncGarminData" TRIGGER: If the user explicitly asks to sync, update, or refresh data from their Garmin watch/tracker (e.g. "sync my watch", "refresh my steps", "update data from watch"), include "syncGarminData".
-                2. "saveUserMemory" TRIGGER: Call "saveUserMemory" whenever the user:
+                1. TEMPORAL GROUNDING: Always evaluate relative time tokens ("today", "yesterday", "last night", "this morning", "tonight", "right now") against CURRENT TEMPORAL CONTEXT above.
+                2. "syncGarminData" TRIGGER: If the user explicitly asks to sync, update, or refresh data from their Garmin watch/tracker (e.g. "sync my watch", "refresh my steps", "update data from watch"), include "syncGarminData".
+                3. "saveUserMemory" TRIGGER: Call "saveUserMemory" whenever the user:
                    - Instructs how to address them, persona, tone, language, or pronouns (e.g., "call me X", "speak informally", "from now on always...").
                    - Shares personal profile info (name, job, age, habits).
                    - States a permanent rule, goal, or constraint (e.g., "I am vegetarian", "target 21km in Dec", "monthly budget 15M").
                    - Explicitly asks to remember or note something down ("remember that...", "keep in mind...").
                    Set category: "PREFERENCE" | "PERSONA" | "FITNESS" | "DIET" | "FINANCE" | "LIFESTYLE" | "GOAL" | "GENERAL".
-                3. Only return NO tools ({"tools": []}) if the message is purely transient casual chitchat or general knowledge questions without ANY user instructions, preferences, or personal metrics (e.g. "hello", "how are you today?", "what causes insomnia?").
-                4. If the user asks about past physical activity ("yesterday", "last night"), set date="yesterday".
-                5. If the user asks about current physical activity ("today", "now"), set date="today".
-                6. If a calendar date is specified, set date="YYYY-MM-DD".
-                7. Only select data tools relevant to the domain (do not select finance for health queries, or health for finance queries).
+                4. Only return NO tools ({"tools": []}) if the message is purely transient casual chitchat or general knowledge questions without ANY user instructions, preferences, or personal metrics (e.g. "hello", "how are you today?", "what causes insomnia?").
+                5. If the user asks about past physical activity ("yesterday", "last night"), set date="yesterday".
+                6. If the user asks about current physical activity ("today", "now"), set date="today".
+                7. If a calendar date is specified, set date="YYYY-MM-DD".
+                8. Only select data tools relevant to the domain (do not select finance for health queries, or health for finance queries).
                 
                 OUTPUT FORMAT: Strict JSON only:
                 {
@@ -128,7 +134,7 @@ public class AssistantService {
                 }
                 If no tools are needed, output:
                 {"tools": []}
-                """.formatted(LocalDate.now());
+                """.formatted(temporalContext.getFormattedPromptContext());
 
         try {
             String rawJson = chatClient.prompt()
@@ -191,8 +197,8 @@ public class AssistantService {
                                      List<UserMemory> preferences,
                                      List<ChatMessage> history) {
         StringBuilder sb = new StringBuilder();
-        sb.append("You are the Personal Life OS Agent (PLOA), a private, highly intelligent personal life companion for physical health, recovery, fitness, and personal finance.\n");
-        sb.append("Today's date is ").append(today).append(".\n\n");
+        sb.append("You are the Personal Life OS Agent (PLOA), a private, highly intelligent personal life companion for physical health, recovery, fitness, and personal finance.\n\n");
+        sb.append(temporalContext.getFormattedPromptContext()).append("\n\n");
 
         // 1. Persistent User Profile
         if (!preferences.isEmpty()) {
@@ -240,7 +246,11 @@ public class AssistantService {
                    - If the user uses casual or informal tone, match their casual, candid vibe naturally.
                    - If asked in English, reply in English.
                 8. Format cleanly using standard Markdown (*bold*, lists, emojis). Avoid unclosed formatting markers.
-                """);
+                9. REAL-TIME TEMPORAL AWARENESS:
+                   - You are strictly aware of the exact real-time timestamp, date, day of week, and time of day (%s, %s) specified in "CURRENT TEMPORAL CONTEXT" at the top of the prompt.
+                   - Always align greetings (e.g. good morning, good afternoon, good evening), recommendations, and commentary on meals, sleep, or workouts with the current time of day.
+                   - Relative temporal references ("today", "yesterday", "last night", "this morning", "tonight", "right now", "earlier") MUST be interpreted against this exact timestamp.
+                """.formatted(temporalContext.getTimeOfDay(), temporalContext.getDayOfWeek()));
 
         return sb.toString();
     }
