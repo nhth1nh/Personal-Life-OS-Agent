@@ -566,9 +566,9 @@ public class TelegramBotHandler implements SpringLongPollingBot, LongPollingUpda
         }
     }
 
-    private boolean isAllowed(long chatId) {
+    boolean isAllowed(long chatId) {
         List<Long> allowed = properties.telegram().allowedChatIdList();
-        return allowed.isEmpty() || allowed.contains(chatId);
+        return !allowed.isEmpty() && allowed.contains(chatId);
     }
 
     private void sendText(long chatId, String text) throws TelegramApiException {

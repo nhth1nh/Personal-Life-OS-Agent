@@ -6,8 +6,10 @@ import org.springframework.stereotype.Component;
 
 import javax.imageio.IIOImage;
 import javax.imageio.ImageIO;
+import javax.imageio.ImageReader;
 import javax.imageio.ImageWriteParam;
 import javax.imageio.ImageWriter;
+import javax.imageio.stream.ImageInputStream;
 import javax.imageio.stream.ImageOutputStream;
 import java.awt.*;
 import java.awt.image.BufferedImage;
@@ -26,6 +28,8 @@ public class ImageOptimizer {
 
     private static final Logger log = LoggerFactory.getLogger(ImageOptimizer.class);
     public static final int DEFAULT_MAX_DIMENSION = 1280;
+    public static final int MAX_SAFE_IMAGE_DIMENSION = 8192;
+    public static final long MAX_SAFE_PIXEL_COUNT = 40_000_000L; // 40 MP max to prevent decompression bombs
     public static final float JPEG_QUALITY = 0.85f;
 
     public byte[] optimizeForOcr(byte[] imageBytes, String mimeType) {
@@ -38,8 +42,35 @@ public class ImageOptimizer {
             return imageBytes;
         }
 
+        // 1. Inspect image header dimensions without decoding full raster (Decompression bomb guard)
+        try (ImageInputStream iis = ImageIO.createImageInputStream(new ByteArrayInputStream(imageBytes))) {
+            if (iis != null) {
+                Iterator<ImageReader> readers = ImageIO.getImageReaders(iis);
+                if (readers.hasNext()) {
+                    ImageReader reader = readers.next();
+                    try {
+                        reader.setInput(iis, true, true);
+                        int rawW = reader.getWidth(0);
+                        int rawH = reader.getHeight(0);
+                        long totalPixels = (long) rawW * rawH;
+                        if (rawW > MAX_SAFE_IMAGE_DIMENSION || rawH > MAX_SAFE_IMAGE_DIMENSION || totalPixels > MAX_SAFE_PIXEL_COUNT) {
+                            log.warn("Image dimensions exceed safety limit: {}x{} ({} MP). Skipping resize to prevent memory exhaustion.",
+                                    rawW, rawH, totalPixels / 1_000_000.0);
+                            return imageBytes;
+                        }
+                    } finally {
+                        reader.dispose();
+                    }
+                }
+            }
+        } catch (Throwable t) {
+            log.debug("Header dimension check failed: {}, continuing to standard decode", t.getMessage());
+        }
+
+        BufferedImage original = null;
+        BufferedImage resized = null;
         try {
-            BufferedImage original = ImageIO.read(new ByteArrayInputStream(imageBytes));
+            original = ImageIO.read(new ByteArrayInputStream(imageBytes));
             if (original == null) {
                 log.debug("ImageIO could not decode image, using original bytes");
                 return imageBytes;
@@ -67,7 +98,7 @@ public class ImageOptimizer {
             int targetHeight = (int) Math.round(height * scale);
 
             // Draw to RGB image (removes alpha if present for clean JPEG compression)
-            BufferedImage resized = new BufferedImage(targetWidth, targetHeight, BufferedImage.TYPE_INT_RGB);
+            resized = new BufferedImage(targetWidth, targetHeight, BufferedImage.TYPE_INT_RGB);
             Graphics2D g2d = resized.createGraphics();
             try {
                 g2d.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BILINEAR);
@@ -108,6 +139,13 @@ public class ImageOptimizer {
         } catch (Throwable t) {
             log.warn("Image optimization skipped due to error: {}, using original bytes", t.getMessage());
             return imageBytes;
+        } finally {
+            if (original != null) {
+                original.flush();
+            }
+            if (resized != null) {
+                resized.flush();
+            }
         }
     }
 }
