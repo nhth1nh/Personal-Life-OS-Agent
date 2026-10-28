@@ -44,12 +44,6 @@ logging:
 ploa:
   security:
     api-key: ${API_SECRET_KEY:changeme-strong-secret}
-  health:
-    target-weight-kg: ${TARGET_WEIGHT_KG:68.0}
-    baseline-window-days: ${BASELINE_WINDOW_DAYS:30}
-    sleep-target-hours: ${SLEEP_TARGET_HOURS:7.5}
-  finance:
-    monthly-budget-vnd: ${MONTHLY_BUDGET_VND:10000000}
   telegram:
     bot-token: ${TELEGRAM_BOT_TOKEN:}
     bot-username: ${TELEGRAM_BOT_USERNAME:}

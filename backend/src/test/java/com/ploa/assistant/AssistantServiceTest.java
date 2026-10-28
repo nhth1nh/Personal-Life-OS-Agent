@@ -3,12 +3,27 @@ package com.ploa.assistant;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.mockito.Mockito;
+import org.springframework.ai.chat.client.ChatClient;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
 class AssistantServiceTest {
 
     private final ObjectMapper mapper = new ObjectMapper();
+
+    private AssistantService createService() {
+        return new AssistantService(
+                null,
+                null,
+                null,
+                null,
+                Mockito.mock(ChatClient.Builder.class),
+                null,
+                null,
+                null
+        );
+    }
 
     @Test
     @DisplayName("Should parse tool plan with zero tools correctly")
@@ -84,7 +99,7 @@ class AssistantServiceTest {
                 }
                 """;
 
-        AssistantService assistantService = new AssistantService(null, null, null, org.mockito.Mockito.mock(org.springframework.ai.chat.client.ChatClient.Builder.class), null, null, null);
+        AssistantService assistantService = createService();
         AssistantService.ToolPlan plan = assistantService.parseToolPlan(json);
 
         assertThat(plan.tools()).containsExactly("saveUserMemory");
@@ -95,9 +110,30 @@ class AssistantServiceTest {
     }
 
     @Test
+    @DisplayName("Should parse updateMonthlyBudget and updateHealthTargets tool plans")
+    void shouldParseProfileUpdateToolPlan() throws Exception {
+        String json = """
+                {
+                  "tools": ["updateMonthlyBudget", "updateHealthTargets"],
+                  "budgetVnd": 15000000,
+                  "targetWeightKg": 64.5,
+                  "sleepTargetHours": 8.0
+                }
+                """;
+
+        AssistantService assistantService = createService();
+        AssistantService.ToolPlan plan = assistantService.parseToolPlan(json);
+
+        assertThat(plan.tools()).containsExactly("updateMonthlyBudget", "updateHealthTargets");
+        assertThat(plan.budgetVnd()).isEqualTo(15000000L);
+        assertThat(plan.targetWeightKg()).isEqualTo(64.5);
+        assertThat(plan.sleepTargetHours()).isEqualTo(8.0);
+    }
+
+    @Test
     @DisplayName("Should skip tool planning for greetings, acknowledgments, and pleasantries")
     void shouldSkipToolPlanningForPleasantries() {
-        AssistantService assistantService = new AssistantService(null, null, null, org.mockito.Mockito.mock(org.springframework.ai.chat.client.ChatClient.Builder.class), null, null, null);
+        AssistantService assistantService = createService();
 
         assertThat(assistantService.shouldSkipToolPlanning("Hello")).isTrue();
         assertThat(assistantService.shouldSkipToolPlanning("Hey")).isTrue();
@@ -113,7 +149,7 @@ class AssistantServiceTest {
     @Test
     @DisplayName("Should NOT skip tool planning when user asks for metrics, tools, or memory")
     void shouldNotSkipToolPlanningForDomainQueries() {
-        AssistantService assistantService = new AssistantService(null, null, null, org.mockito.Mockito.mock(org.springframework.ai.chat.client.ChatClient.Builder.class), null, null, null);
+        AssistantService assistantService = createService();
 
         assertThat(assistantService.shouldSkipToolPlanning("How many steps did I take today?")).isFalse();
         assertThat(assistantService.shouldSkipToolPlanning("How much did I spend today?")).isFalse();
@@ -131,7 +167,7 @@ class AssistantServiceTest {
                   "date": "today"
                 }
                 """;
-        AssistantService assistantService = new AssistantService(null, null, null, org.mockito.Mockito.mock(org.springframework.ai.chat.client.ChatClient.Builder.class), null, null, null);
+        AssistantService assistantService = createService();
         AssistantService.ToolPlan plan = assistantService.parseToolPlan(json);
 
         assertThat(plan.tools()).containsExactly("recordExpense");

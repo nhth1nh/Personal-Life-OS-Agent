@@ -10,6 +10,7 @@ import com.ploa.finance.model.SpendType;
 import com.ploa.finance.model.Transaction;
 import com.ploa.finance.service.FinanceService;
 import com.ploa.health.service.HealthService;
+import com.ploa.profile.UserProfileService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
@@ -44,6 +45,7 @@ import java.util.UUID;
  *  - Photo messages → Vision OCR → save draft transaction → inline keyboard
  *  - Text messages → quick expense parsing or Life OS conversational AI assistant
  *  - Callback queries → confirm, change category, delete
+ *  - Onboarding & profile commands → /init to inspect and configure base goals
  */
 @Component
 public class TelegramBotHandler implements SpringLongPollingBot, LongPollingUpdateConsumer {
@@ -60,6 +62,7 @@ public class TelegramBotHandler implements SpringLongPollingBot, LongPollingUpda
     private final BriefingOrchestrator briefingOrchestrator;
     private final AssistantService assistantService;
     private final BotMessageFactory messageFactory;
+    private final UserProfileService profileService;
 
     record PendingImage(
             byte[] photoBytes,
@@ -77,7 +80,8 @@ public class TelegramBotHandler implements SpringLongPollingBot, LongPollingUpda
                                HealthService healthService,
                                BriefingOrchestrator briefingOrchestrator,
                                AssistantService assistantService,
-                               BotMessageFactory messageFactory) {
+                               BotMessageFactory messageFactory,
+                               UserProfileService profileService) {
         this.properties = properties;
         this.ocrService = ocrService;
         this.financeService = financeService;
@@ -85,6 +89,7 @@ public class TelegramBotHandler implements SpringLongPollingBot, LongPollingUpda
         this.briefingOrchestrator = briefingOrchestrator;
         this.assistantService = assistantService;
         this.messageFactory = messageFactory;
+        this.profileService = profileService;
         String token = properties.telegram().botToken();
         this.telegramClient = (token != null && !token.isBlank())
                 ? new OkHttpTelegramClient(token)
@@ -371,6 +376,7 @@ public class TelegramBotHandler implements SpringLongPollingBot, LongPollingUpda
 
         switch (baseCmd) {
             case "/start", "/help" -> sendText(chatId, messageFactory.helpText());
+            case "/init" -> handleInit(chatId, args);
             case "/new", "/reset" -> {
                 assistantService.clearChatHistory(String.valueOf(chatId));
                 sendText(chatId, "🧹 *Conversation reset!* Started a fresh chat session (long-term goals and profile preferences remain preserved).");
@@ -435,6 +441,27 @@ public class TelegramBotHandler implements SpringLongPollingBot, LongPollingUpda
             }
             default -> sendText(chatId, "Unknown command. Try /help");
         }
+    }
+
+    private void handleInit(long chatId, String args) throws TelegramApiException {
+        if (profileService == null) {
+            sendText(chatId, "⚠️ Profile service unavailable.");
+            return;
+        }
+        if (args == null || args.isBlank()) {
+            var profile = profileService.getProfile();
+            sendText(chatId, messageFactory.buildProfileSummary(profile));
+            return;
+        }
+
+        var parsed = profileService.parseArgs(args);
+        if (!parsed.hasAny()) {
+            sendText(chatId, "⚠️ Could not understand input format. Try:\n• `/init budget 15M`\n• `/init weight 65kg`\n• `/init sleep 8h`\n• `/init budget 15M weight 65 sleep 8`");
+            return;
+        }
+
+        var updated = profileService.applyUpdate(parsed, "TELEGRAM_INIT");
+        sendText(chatId, messageFactory.buildProfileUpdateSuccess(updated));
     }
 
     // ── Callback query handler ─────────────────────────────────────────────────
@@ -523,7 +550,7 @@ public class TelegramBotHandler implements SpringLongPollingBot, LongPollingUpda
                 editText(chatId, promptMsgId, "🤔 <i>PLOA is analyzing your image...</i>");
                 String prompt = (pending.caption() != null && !pending.caption().isBlank())
                         ? pending.caption()
-                        : "Please analyze this image.";
+                : "Please analyze this image.";
                 AssistantService.ChatResult res = assistantService.chatDetailed(String.valueOf(chatId), prompt, pending.photoBytes(), pending.mimeType());
                 sendText(chatId, res.reply());
             }

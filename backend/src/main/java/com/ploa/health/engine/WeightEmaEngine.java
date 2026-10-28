@@ -1,9 +1,9 @@
 package com.ploa.health.engine;
 
-import com.ploa.config.PloaProperties;
 import com.ploa.health.engine.dto.WeightEmaResult;
 import com.ploa.health.model.HealthMetric;
 import com.ploa.health.repository.HealthMetricRepository;
+import com.ploa.profile.UserProfileService;
 import org.springframework.stereotype.Component;
 
 import java.util.List;
@@ -20,20 +20,21 @@ public class WeightEmaEngine {
     private static final double ALPHA = 2.0 / (EMA_PERIOD + 1); // 0.25
 
     private final HealthMetricRepository repo;
-    private final PloaProperties properties;
+    private final UserProfileService profileService;
 
-    public WeightEmaEngine(HealthMetricRepository repo, PloaProperties properties) {
+    public WeightEmaEngine(HealthMetricRepository repo, UserProfileService profileService) {
         this.repo = repo;
-        this.properties = properties;
+        this.profileService = profileService;
     }
 
     public WeightEmaResult compute() {
+        double targetKg = profileService.getTargetWeightKg();
+
         // Fetch last 30 entries with weight (newest first)
         List<HealthMetric> entries = repo.findLatestWeightEntries(30);
 
         if (entries.isEmpty()) {
-            return new WeightEmaResult(null, null, null,
-                    properties.health().targetWeightKg(), null, null);
+            return new WeightEmaResult(null, null, null, targetKg, null, null);
         }
 
         // Reverse to chronological order for EMA calculation
@@ -55,7 +56,6 @@ public class WeightEmaEngine {
         }
 
         HealthMetric latest = entries.getFirst(); // newest
-        double targetKg = properties.health().targetWeightKg();
 
         return new WeightEmaResult(
                 latest.getDate(),

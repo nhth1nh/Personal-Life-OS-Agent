@@ -14,6 +14,7 @@ import com.ploa.assistant.tools.AssistantTools;
 import com.ploa.finance.model.SpendType;
 import com.ploa.finance.model.Transaction;
 import com.ploa.finance.service.FinanceService;
+import com.ploa.profile.UserProfileService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.ai.chat.client.ChatClient;
@@ -41,6 +42,7 @@ public class AssistantService {
 
     private final AssistantTools assistantTools;
     private final MemoryService memoryService;
+    private final UserProfileService userProfileService;
     private final TemporalContext temporalContext;
     private final ChatClient chatClient;
     private final VisionOcrService ocrService;
@@ -49,6 +51,7 @@ public class AssistantService {
 
     public AssistantService(AssistantTools assistantTools,
                             MemoryService memoryService,
+                            UserProfileService userProfileService,
                             TemporalContext temporalContext,
                             ChatClient.Builder chatClientBuilder,
                             VisionOcrService ocrService,
@@ -56,6 +59,7 @@ public class AssistantService {
                             ImageOptimizer imageOptimizer) {
         this.assistantTools = assistantTools;
         this.memoryService = memoryService;
+        this.userProfileService = userProfileService;
         this.temporalContext = temporalContext;
         this.chatClient = chatClientBuilder.build();
         this.ocrService = ocrService;
@@ -67,7 +71,18 @@ public class AssistantService {
     public record MemoryPayload(String category, String key, String value) {}
 
     @JsonIgnoreProperties(ignoreUnknown = true)
-    public record ToolPlan(List<String> tools, String date, MemoryPayload memory) {}
+    public record ToolPlan(
+            List<String> tools,
+            String date,
+            MemoryPayload memory,
+            Long budgetVnd,
+            Double targetWeightKg,
+            Double sleepTargetHours
+    ) {
+        public ToolPlan(List<String> tools, String date, MemoryPayload memory) {
+            this(tools, date, memory, null, null, null);
+        }
+    }
 
     public record ChatResult(String reply, Transaction recordedTransaction, OcrResult ocrResult) {}
 
@@ -114,7 +129,7 @@ public class AssistantService {
         // 4. Execute only the planned tools
         ExecutionResult execResult = executePlan(plan, userMessage);
         Map<String, Object> groundingData = execResult.groundingData();
-        if (groundingData.containsKey("memory_saved")) {
+        if (groundingData.containsKey("memory_saved") || groundingData.containsKey("budget_updated") || groundingData.containsKey("health_targets_updated")) {
             preferences = memoryService.getAllPreferences();
         }
 
@@ -188,16 +203,18 @@ public class AssistantService {
                 - "getRecentTransactions": List of recent individual expense transactions.
                 - "getPendingTransactions": List of unconfirmed or pending draft transactions.
                 - "saveUserMemory": Persist permanent profile facts (user identity/name, communication style, pronouns, dietary rules, fixed budget limits, enduring goals, explicit save instructions).
+                - "updateMonthlyBudget": Update monthly financial budget in VND. Call when user wants to change, increase, decrease, or set monthly budget (e.g. 'đặt budget 12tr', 'set budget to 15 million VND', 'ngân sách 15 triệu').
+                - "updateHealthTargets": Update target body weight in kg and/or sleep goal hours. Call when user wants to set or update goal weight or sleep target (e.g. 'đặt mục tiêu cân nặng 65kg', 'target weight is 70kg', 'tôi muốn ngủ 8 tiếng mỗi ngày').
 
                 RULES:
                 1. TEMPORAL GROUNDING: Evaluate relative dates ("today", "yesterday", "last night") against CURRENT TEMPORAL CONTEXT.
-                2. "saveUserMemory": Trigger ONLY when user explicitly commands to remember an enduring fact or sets permanent profile context (e.g. name, permanent diet/allergy, fixed monthly budget). Do NOT save casual daily lunches, transient moods, or normal chatting.
+                2. "saveUserMemory": Trigger ONLY when user explicitly commands to remember an enduring fact or sets permanent profile context (e.g. name, permanent diet/allergy).
                 3. ZERO-TOOL DEFAULT ({"tools": []}): Return {"tools": []} for greetings, acknowledgments, casual conversation, advice, or questions not needing user database records.
                 4. DATE RESOLUTION: If the user asks about past physical activity ("yesterday", "last night"), set date="yesterday". Otherwise set date="today" or "YYYY-MM-DD".
 
                 OUTPUT FORMAT: Strict JSON only:
                 - If tools needed:
-                  {"tools": ["toolName"], "date": "today" | "yesterday" | "YYYY-MM-DD", "memory": {"category": "PROFILE|PERSONA|PREFERENCE|FITNESS|DIET|FINANCE|GOAL", "key": "...", "value": "..."}}
+                  {"tools": ["toolName"], "date": "today" | "yesterday" | "YYYY-MM-DD", "memory": {"category": "PROFILE|PERSONA|PREFERENCE|FITNESS|DIET|FINANCE|GOAL", "key": "...", "value": "..."}, "budgetVnd": 15000000, "targetWeightKg": 65.0, "sleepTargetHours": 8.0}
                 - If no tools needed:
                   {"tools": []}
                 """.formatted(temporalContext.getFormattedPromptContext(), historyContext.toString());
@@ -226,6 +243,19 @@ public class AssistantService {
         JsonNode root = MAPPER.readTree(cleaned);
         List<String> tools = new ArrayList<>();
         MemoryPayload memory = null;
+        Long budgetVnd = null;
+        Double targetWeightKg = null;
+        Double sleepTargetHours = null;
+
+        if (root.has("budgetVnd") && !root.get("budgetVnd").isNull()) {
+            budgetVnd = root.get("budgetVnd").asLong();
+        }
+        if (root.has("targetWeightKg") && !root.get("targetWeightKg").isNull()) {
+            targetWeightKg = root.get("targetWeightKg").asDouble();
+        }
+        if (root.has("sleepTargetHours") && !root.get("sleepTargetHours").isNull()) {
+            sleepTargetHours = root.get("sleepTargetHours").asDouble();
+        }
 
         JsonNode toolsNode = root.get("tools");
         if (toolsNode != null && toolsNode.isArray()) {
@@ -245,6 +275,15 @@ public class AssistantService {
                                     args.path("value").asText("")
                             );
                         }
+                        if (args.has("budgetVnd") && !args.get("budgetVnd").isNull()) {
+                            budgetVnd = args.get("budgetVnd").asLong();
+                        }
+                        if (args.has("targetWeightKg") && !args.get("targetWeightKg").isNull()) {
+                            targetWeightKg = args.get("targetWeightKg").asDouble();
+                        }
+                        if (args.has("sleepTargetHours") && !args.get("sleepTargetHours").isNull()) {
+                            sleepTargetHours = args.get("sleepTargetHours").asDouble();
+                        }
                     }
                 }
             }
@@ -260,7 +299,7 @@ public class AssistantService {
         }
 
         String date = root.has("date") && !root.get("date").isNull() ? root.get("date").asText("today") : "today";
-        return new ToolPlan(tools, date, memory);
+        return new ToolPlan(tools, date, memory, budgetVnd, targetWeightKg, sleepTargetHours);
     }
 
     private ExecutionResult executePlan(ToolPlan plan, String userMessage) {
@@ -318,6 +357,30 @@ public class AssistantService {
                             data.put("memory_saved", res);
                         }
                     }
+                    case "updateMonthlyBudget" -> {
+                        Long budget = plan.budgetVnd();
+                        if ((budget == null || budget <= 0) && userProfileService != null && userMessage != null) {
+                            var parsed = userProfileService.parseArgs(userMessage);
+                            budget = parsed.monthlyBudgetVnd();
+                        }
+                        if (budget != null && budget > 0) {
+                            String res = assistantTools.updateMonthlyBudget(budget);
+                            data.put("budget_updated", res);
+                        }
+                    }
+                    case "updateHealthTargets" -> {
+                        Double weight = plan.targetWeightKg();
+                        Double sleep = plan.sleepTargetHours();
+                        if (weight == null && sleep == null && userProfileService != null && userMessage != null) {
+                            var parsed = userProfileService.parseArgs(userMessage);
+                            weight = parsed.targetWeightKg();
+                            sleep = parsed.sleepTargetHours();
+                        }
+                        if (weight != null || sleep != null) {
+                            String res = assistantTools.updateHealthTargets(weight, sleep);
+                            data.put("health_targets_updated", res);
+                        }
+                    }
                     default -> log.debug("Unknown tool in plan: {}", tool);
                 }
             } catch (Exception e) {
@@ -369,36 +432,28 @@ public class AssistantService {
 
         // 2. Selective Grounding Data (compact JSON to minimize token waste)
         if (!groundingData.isEmpty()) {
-            sb.append("=== RETRIEVED GROUNDING DATA ===\n");
-            try {
-                sb.append(MAPPER.writeValueAsString(groundingData));
-            } catch (Exception e) {
-                sb.append(groundingData);
+            sb.append("=== RETRIEVED GROUNDING DATA (Empirical Truth) ===\n");
+            for (Map.Entry<String, Object> entry : groundingData.entrySet()) {
+                try {
+                    String json = MAPPER.writeValueAsString(entry.getValue());
+                    sb.append("• ").append(entry.getKey()).append(": ").append(json).append("\n");
+                } catch (Exception e) {
+                    sb.append("• ").append(entry.getKey()).append(": ").append(entry.getValue()).append("\n");
+                }
             }
-            sb.append("\n================================\n\n");
+            sb.append("=================================================\n\n");
         }
 
-        // 3. Recent Conversation History (last 4 prior turns to keep context tight)
-        if (history != null && history.size() > 1) {
-            sb.append("=== RECENT CONVERSATION HISTORY ===\n");
-            int limit = Math.min(history.size() - 1, 4);
-            int start = (history.size() - 1) - limit;
-            for (int i = start; i < history.size() - 1; i++) {
-                ChatMessage m = history.get(i);
-                sb.append(m.getRole().toUpperCase()).append(": ").append(m.getContent()).append("\n");
-            }
-            sb.append("===================================\n\n");
-        }
-
-        // 4. Behavioral Guidelines (streamlined to reduce prompt tokens)
+        // 3. Conversational Guidelines
         sb.append("""
-                BEHAVIOR GUIDELINES:
-                1. Single Source of Truth: Use RETRIEVED GROUNDING DATA for all metrics. Never invent or falsify numbers.
-                2. User Persona: Strictly adhere to all address forms, pronouns, and preferences in USER PROFILE.
-                3. Language & Tone: Match the user's preferred language and conversational vibe.
-                4. Temporal Awareness: Interpret relative dates and greetings against CURRENT TEMPORAL CONTEXT (%s, %s).
+                GUIDELINES:
+                1. Language: Answer in the same language the user addresses you in (e.g. Vietnamese if asked in Vietnamese, English if in English).
+                2. Math & Metrics: All metric calculations in RETRIEVED GROUNDING DATA are deterministic truth. Never invent or recalculate biometrics, Z-scores, or burn rates.
+                3. Proactive Grounding: If health or finance data is present in the grounding context, seamlessly integrate it to provide actionable, concrete coaching.
+                4. Tone: Concise, executive, empathetic, and direct. No filler or corporate boilerplate.
                 5. Formatting: Format cleanly using standard Markdown (*bold*, lists, emojis).
                 6. Recorded Expenses: If "recorded_expense" is in RETRIEVED GROUNDING DATA, warmly confirm the logged transaction to the user clearly (amount, category, merchant).
+                7. Base Target Updates: If "budget_updated" or "health_targets_updated" is in RETRIEVED GROUNDING DATA, confirm the new target clearly to the user.
                 """.formatted(temporalContext.getTimeOfDay(), temporalContext.getDayOfWeek()));
 
         return sb.toString();

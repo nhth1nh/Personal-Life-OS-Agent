@@ -12,6 +12,7 @@ import com.ploa.health.engine.dto.ReadinessResult;
 import com.ploa.health.engine.dto.WeightEmaResult;
 import com.ploa.health.model.HealthMetric;
 import com.ploa.health.service.HealthService;
+import com.ploa.profile.UserProfileService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.ai.chat.client.ChatClient;
@@ -76,6 +77,7 @@ public class BriefingOrchestrator {
     private final HealthService healthService;
     private final FinanceService financeService;
     private final MemoryService memoryService;
+    private final UserProfileService profileService;
     private final TemporalContext temporalContext;
     private final ChatClient chatClient;
     private final PloaProperties properties;
@@ -84,12 +86,14 @@ public class BriefingOrchestrator {
     public BriefingOrchestrator(HealthService healthService,
                                 FinanceService financeService,
                                 MemoryService memoryService,
+                                UserProfileService profileService,
                                 TemporalContext temporalContext,
                                 ChatClient.Builder chatClientBuilder,
                                 PloaProperties properties) {
         this.healthService = healthService;
         this.financeService = financeService;
         this.memoryService = memoryService;
+        this.profileService = profileService;
         this.temporalContext = temporalContext;
         this.chatClient = chatClientBuilder.build();
         this.properties = properties;
@@ -225,11 +229,11 @@ public class BriefingOrchestrator {
                 fmt(r != null && r.sleepDeepMin() != null ? r.sleepDeepMin().doubleValue() : null),
                 fmt(r != null && r.sleepRemMin() != null ? r.sleepRemMin().doubleValue() : null),
                 r != null ? r.sleepDebtMin() : "N/A",
-                properties.health().sleepTargetHours() * 60,
+                profileService.getSleepTargetHours() * 60,
                 fmt2(r != null ? r.restorativeRatioPct() : null),
                 w != null ? w.latestWeightKg() : "N/A",
                 w != null ? w.ema7Kg() : "N/A",
-                w != null ? w.targetWeightKg() : properties.health().targetWeightKg(),
+                w != null && w.targetWeightKg() != null ? w.targetWeightKg() : profileService.getTargetWeightKg(),
                 w != null ? w.deltaToTargetKg() : "N/A",
                 w != null ? w.weeklyTrendKg() : "N/A",
                 VND.format(f.monthlyBudgetVnd()),

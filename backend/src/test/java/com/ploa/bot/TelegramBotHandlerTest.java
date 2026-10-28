@@ -1,6 +1,7 @@
 package com.ploa.bot;
 
 import com.ploa.config.PloaProperties;
+import com.ploa.profile.UserProfileService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -17,8 +18,6 @@ class TelegramBotHandlerTest {
     void setUp() {
         PloaProperties properties = new PloaProperties(
                 null,
-                null,
-                null,
                 new PloaProperties.Telegram("", "", ""),
                 null,
                 null
@@ -26,6 +25,7 @@ class TelegramBotHandlerTest {
 
         handler = new TelegramBotHandler(
                 properties,
+                null,
                 null,
                 null,
                 null,
@@ -81,12 +81,13 @@ class TelegramBotHandlerTest {
     @DisplayName("Empty allowed chat ID list should fail closed and reject all chat IDs")
     void testIsAllowedEmptyFailsClosed() {
         PloaProperties emptyProps = new PloaProperties(
-                null, null, null,
+                null,
                 new PloaProperties.Telegram("token", "user", ""),
-                null, null
+                null,
+                null
         );
         TelegramBotHandler emptyHandler = new TelegramBotHandler(
-                emptyProps, null, null, null, null, null, null
+                emptyProps, null, null, null, null, null, null, null
         );
 
         assertThat(emptyHandler.isAllowed(123456789L)).isFalse();
@@ -97,12 +98,13 @@ class TelegramBotHandlerTest {
     @DisplayName("Configured allowed chat ID list should permit whitelisted and block unknown IDs")
     void testIsAllowedWithConfiguredWhitelist() {
         PloaProperties props = new PloaProperties(
-                null, null, null,
+                null,
                 new PloaProperties.Telegram("token", "user", "123456789,999888777"),
-                null, null
+                null,
+                null
         );
         TelegramBotHandler customHandler = new TelegramBotHandler(
-                props, null, null, null, null, null, null
+                props, null, null, null, null, null, null, null
         );
 
         assertThat(customHandler.isAllowed(123456789L)).isTrue();
@@ -179,5 +181,30 @@ class TelegramBotHandlerTest {
 
         assertThat(handler.pendingImages).containsKey(freshId);
         assertThat(handler.pendingImages).doesNotContainKey(oldId);
+    }
+
+    @Test
+    @DisplayName("Should include /init command in help text")
+    void testHelpTextIncludesInit() {
+        BotMessageFactory factory = new BotMessageFactory();
+        String help = factory.helpText();
+        assertThat(help).contains("/init");
+    }
+
+    @Test
+    @DisplayName("Should format profile summary and update success correctly")
+    void testBuildProfileSummaryAndSuccess() {
+        BotMessageFactory factory = new BotMessageFactory();
+        var profile = new UserProfileService.UserProfileData(65.0, 8.0, 30, 15000000L, "Alex");
+
+        String summary = factory.buildProfileSummary(profile);
+        assertThat(summary).contains("15.000.000 VND");
+        assertThat(summary).contains("65.0 kg");
+        assertThat(summary).contains("8.0 hours/night");
+        assertThat(summary).contains("Alex");
+
+        String success = factory.buildProfileUpdateSuccess(profile);
+        assertThat(success).contains("PLOA Profile & Base Targets Updated!");
+        assertThat(success).contains("15.000.000 VND");
     }
 }

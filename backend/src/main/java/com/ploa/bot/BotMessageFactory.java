@@ -2,6 +2,7 @@ package com.ploa.bot;
 
 import com.ploa.ai.dto.OcrResult;
 import com.ploa.finance.model.Transaction;
+import com.ploa.profile.UserProfileService;
 import org.springframework.stereotype.Component;
 import org.telegram.telegrambots.meta.api.methods.send.SendMessage;
 import org.telegram.telegrambots.meta.api.objects.replykeyboard.InlineKeyboardMarkup;
@@ -182,11 +183,60 @@ public class BotMessageFactory {
         );
     }
 
+    public String buildProfileSummary(UserProfileService.UserProfileData p) {
+        String name = p.userName() != null && !p.userName().isBlank() ? p.userName() : "Not set";
+        return """
+                ⚙️ *Personal Life OS — Base Profile & Targets*
+                
+                • 💰 *Monthly Budget:* %s VND
+                • ⚖️ *Target Weight:* %.1f kg
+                • 🛌 *Sleep Target:* %.1f hours/night
+                • 📅 *Baseline Window:* %d days
+                • 👤 *User Name:* %s
+                
+                💡 *How to update:*
+                • `/init budget 15M` (or `15000000`, `15tr`)
+                • `/init weight 65` (or `65.5kg`)
+                • `/init sleep 8` (or `8h`)
+                • `/init budget 15M weight 65 sleep 8`
+                
+                _You can also update anytime simply by chatting with the AI (e.g. "Đặt ngân sách 15 triệu")._
+                """.formatted(
+                VND_FORMAT.format(p.monthlyBudgetVnd()),
+                p.targetWeightKg(),
+                p.sleepTargetHours(),
+                p.baselineWindowDays(),
+                name
+        );
+    }
+
+    public String buildProfileUpdateSuccess(UserProfileService.UserProfileData p) {
+        String name = p.userName() != null && !p.userName().isBlank() ? p.userName() : "Not set";
+        return """
+                ✅ *PLOA Profile & Base Targets Updated!*
+                
+                • 💰 *Monthly Budget:* %s VND
+                • ⚖️ *Target Weight:* %.1f kg
+                • 🛌 *Sleep Target:* %.1f hours/night
+                • 📅 *Baseline Window:* %d days
+                • 👤 *User Name:* %s
+                
+                _All calculations across /finance, /health, and daily briefings now use these dynamic targets._
+                """.formatted(
+                VND_FORMAT.format(p.monthlyBudgetVnd()),
+                p.targetWeightKg(),
+                p.sleepTargetHours(),
+                p.baselineWindowDays(),
+                name
+        );
+    }
+
     public String helpText() {
         return """
                 🤖 *Personal Life OS Agent*
                 
                 *Commands:*
+                /init — View or configure base data (budget, target weight, sleep goal)
                 /health — Today's HRV/RHR recovery + weight EMA
                 /finance — Month-to-date spending & burn rate
                 /briefing — Generate and send today's AI morning briefing (07:30)

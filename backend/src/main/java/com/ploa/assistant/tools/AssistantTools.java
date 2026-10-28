@@ -11,6 +11,7 @@ import com.ploa.health.engine.dto.SleepResult;
 import com.ploa.health.engine.dto.WeightEmaResult;
 import com.ploa.health.model.HealthMetric;
 import com.ploa.health.service.HealthService;
+import com.ploa.profile.UserProfileService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.ai.tool.annotation.Tool;
@@ -32,13 +33,16 @@ public class AssistantTools {
     private final HealthService healthService;
     private final FinanceService financeService;
     private final MemoryService memoryService;
+    private final UserProfileService profileService;
 
     public AssistantTools(HealthService healthService,
                           FinanceService financeService,
-                          MemoryService memoryService) {
+                          MemoryService memoryService,
+                          UserProfileService profileService) {
         this.healthService = healthService;
         this.financeService = financeService;
         this.memoryService = memoryService;
+        this.profileService = profileService;
     }
 
     public record DailyHealthSummary(
@@ -191,6 +195,31 @@ public class AssistantTools {
         log.info("Assistant tool call: saveUserMemory(category={}, key={}, value={})", category, key, value);
         UserMemory m = memoryService.savePreference(category, key, value, "CONVERSATION");
         return "Saved memory [" + m.getCategory() + " / " + m.getMemoryKey() + "]: " + m.getMemoryValue();
+    }
+
+    @Tool(description = "Update the user's monthly financial budget in VND. Call this when the user requests to update, change, or set their monthly spending budget.")
+    public String updateMonthlyBudget(
+            @ToolParam(description = "New monthly budget in VND (e.g. 10000000, 15000000)") long budgetVnd) {
+        log.info("Assistant tool call: updateMonthlyBudget({})", budgetVnd);
+        profileService.setMonthlyBudgetVnd(budgetVnd, "CONVERSATION");
+        return String.format("Updated monthly budget to %,d VND", budgetVnd);
+    }
+
+    @Tool(description = "Update the user's personal health targets (target body weight in kg and/or daily sleep goal in hours). Call this when the user expresses a change in their target weight or sleep goal.")
+    public String updateHealthTargets(
+            @ToolParam(description = "Target body weight in kg (e.g. 65.0, 68.5). Pass null if not changing.", required = false) Double targetWeightKg,
+            @ToolParam(description = "Target sleep duration in hours (e.g. 7.5, 8.0). Pass null if not changing.", required = false) Double sleepTargetHours) {
+        log.info("Assistant tool call: updateHealthTargets(weight={}, sleep={})", targetWeightKg, sleepTargetHours);
+        StringBuilder sb = new StringBuilder("Updated health targets: ");
+        if (targetWeightKg != null && targetWeightKg > 0) {
+            profileService.setTargetWeightKg(targetWeightKg, "CONVERSATION");
+            sb.append(String.format("Target weight: %.1f kg. ", targetWeightKg));
+        }
+        if (sleepTargetHours != null && sleepTargetHours > 0) {
+            profileService.setSleepTargetHours(sleepTargetHours, "CONVERSATION");
+            sb.append(String.format("Sleep target: %.1f hours. ", sleepTargetHours));
+        }
+        return sb.toString().trim();
     }
 
     public LocalDate parseDate(String date) {

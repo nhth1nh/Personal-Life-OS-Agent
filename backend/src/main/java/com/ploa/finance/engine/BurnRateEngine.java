@@ -1,9 +1,9 @@
 package com.ploa.finance.engine;
 
-import com.ploa.config.PloaProperties;
 import com.ploa.finance.engine.dto.BurnRateResult;
 import com.ploa.finance.model.SpendType;
 import com.ploa.finance.repository.TransactionRepository;
+import com.ploa.profile.UserProfileService;
 import org.springframework.stereotype.Component;
 
 import java.time.LocalDate;
@@ -21,11 +21,11 @@ import java.util.Map;
 public class BurnRateEngine {
 
     private final TransactionRepository repo;
-    private final PloaProperties properties;
+    private final UserProfileService profileService;
 
-    public BurnRateEngine(TransactionRepository repo, PloaProperties properties) {
+    public BurnRateEngine(TransactionRepository repo, UserProfileService profileService) {
         this.repo = repo;
-        this.properties = properties;
+        this.profileService = profileService;
     }
 
     public BurnRateResult compute() {
@@ -36,7 +36,7 @@ public class BurnRateEngine {
         int daysElapsed = today.getDayOfMonth();
         int daysRemaining = daysInMonth - daysElapsed + 1; // include today
 
-        long budgetVnd = properties.finance().monthlyBudgetVnd();
+        long budgetVnd = profileService.getMonthlyBudgetVnd();
 
         long mtdTotal = repo.sumConfirmedAmountBetween(monthStart, today);
         long mtdDiscretionary = repo.sumBySpendTypeBetween(monthStart, today, SpendType.DISCRETIONARY);

@@ -4,7 +4,7 @@ import com.ploa.health.engine.dto.ReadinessLevel;
 import com.ploa.health.engine.dto.ReadinessResult;
 import com.ploa.health.model.HealthMetric;
 import com.ploa.health.repository.HealthMetricRepository;
-import com.ploa.config.PloaProperties;
+import com.ploa.profile.UserProfileService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
@@ -25,15 +25,15 @@ public class ReadinessEngine {
     private static final Logger log = LoggerFactory.getLogger(ReadinessEngine.class);
 
     private final HealthMetricRepository repo;
-    private final PloaProperties properties;
+    private final UserProfileService profileService;
 
-    public ReadinessEngine(HealthMetricRepository repo, PloaProperties properties) {
+    public ReadinessEngine(HealthMetricRepository repo, UserProfileService profileService) {
         this.repo = repo;
-        this.properties = properties;
+        this.profileService = profileService;
     }
 
     public ReadinessResult compute(LocalDate targetDate) {
-        int windowDays = properties.health().baselineWindowDays();
+        int windowDays = profileService.getBaselineWindowDays();
         LocalDate windowStart = targetDate.minusDays(windowDays);
 
         // ── Fetch baseline data ───────────────────────────────────────────────
@@ -69,7 +69,7 @@ public class ReadinessEngine {
         Double rhrZ = zScore(todayRhr != null ? todayRhr.doubleValue() : null, rhr30dMean, rhr30dStd);
 
         // ── Sleep Architecture ────────────────────────────────────────────────
-        int sleepTargetMin = (int) (properties.health().sleepTargetHours() * 60);
+        int sleepTargetMin = (int) (profileService.getSleepTargetHours() * 60);
         int sleepDebt = computeSleepDebt(sleepData, sleepTargetMin);
         Double restorativeRatio = computeRestorativeRatio(sleepTotalMin, sleepDeepMin, sleepRemMin);
 

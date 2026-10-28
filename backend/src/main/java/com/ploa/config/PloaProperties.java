@@ -8,23 +8,11 @@ import java.util.List;
 @ConfigurationProperties(prefix = "ploa")
 public record PloaProperties(
         Security security,
-        Health health,
-        Finance finance,
         Telegram telegram,
         Briefing briefing,
         Ai ai
 ) {
     public record Security(String apiKey) {}
-
-    public record Health(
-            @DefaultValue("68.0") double targetWeightKg,
-            @DefaultValue("30") int baselineWindowDays,
-            @DefaultValue("7.5") double sleepTargetHours
-    ) {}
-
-    public record Finance(
-            @DefaultValue("10000000") long monthlyBudgetVnd
-    ) {}
 
     public record Telegram(
             String botToken,
