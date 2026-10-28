@@ -17,6 +17,12 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDate;
 import java.time.OffsetDateTime;
+import com.ploa.finance.api.dto.FinanceAnalyticsResponse;
+import com.ploa.profile.UserProfileService;
+import java.time.YearMonth;
+import java.util.ArrayList;
+import java.util.Map;
+import java.util.stream.Collectors;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -30,15 +36,24 @@ public class FinanceService {
     private final TransactionRepository repo;
     private final OcrAuditRepository ocrAuditRepo;
     private final BurnRateEngine burnRateEngine;
+    private final UserProfileService profileService;
 
     public record DuplicateCheckResult(boolean hasDuplicate, String warningMessage, Transaction matchedTransaction) {}
 
     public FinanceService(TransactionRepository repo,
                           OcrAuditRepository ocrAuditRepo,
                           BurnRateEngine burnRateEngine) {
+        this(repo, ocrAuditRepo, burnRateEngine, null);
+    }
+
+    public FinanceService(TransactionRepository repo,
+                          OcrAuditRepository ocrAuditRepo,
+                          BurnRateEngine burnRateEngine,
+                          UserProfileService profileService) {
         this.repo = repo;
         this.ocrAuditRepo = ocrAuditRepo;
         this.burnRateEngine = burnRateEngine;
+        this.profileService = profileService;
     }
 
     /**
@@ -272,5 +287,105 @@ public class FinanceService {
     public Long getSpentForDate(LocalDate date) {
         LocalDate target = date != null ? date : LocalDate.now();
         return repo.sumConfirmedAmountBetween(target, target);
+    }
+
+    /**
+     * Compute comprehensive financial analytics for a month (defaults to current month).
+     */
+    @Transactional(readOnly = true)
+    public FinanceAnalyticsResponse getAnalytics(String monthStr) {
+        YearMonth ym;
+        try {
+            ym = (monthStr != null && !monthStr.isBlank()) ? YearMonth.parse(monthStr.trim()) : YearMonth.now();
+        } catch (Exception e) {
+            ym = YearMonth.now();
+        }
+
+        LocalDate from = ym.atDay(1);
+        LocalDate to = ym.atEndOfMonth();
+        LocalDate today = LocalDate.now();
+
+        int elapsedDays;
+        if (ym.equals(YearMonth.now())) {
+            elapsedDays = Math.max(1, today.getDayOfMonth());
+        } else {
+            elapsedDays = ym.lengthOfMonth();
+        }
+        int daysInMonth = ym.lengthOfMonth();
+
+        long budget = profileService != null ? profileService.getMonthlyBudgetVnd() : 10_000_000L;
+        Long totalSpend = repo.sumConfirmedAmountBetween(from, to);
+        long totalSpendVal = totalSpend != null ? totalSpend : 0L;
+
+        Long fixed = repo.sumBySpendTypeBetween(from, to, SpendType.FIXED);
+        long fixedVal = fixed != null ? fixed : 0L;
+
+        Long disc = repo.sumBySpendTypeBetween(from, to, SpendType.DISCRETIONARY);
+        long discVal = disc != null ? disc : 0L;
+
+        long remaining = budget - totalSpendVal;
+        long burnRate = totalSpendVal / elapsedDays;
+
+        int remainingDays = Math.max(1, daysInMonth - elapsedDays + 1);
+        long safeDaily = (remaining > 0) ? (remaining / remainingDays) : 0L;
+        long projected = burnRate * daysInMonth;
+
+        // Categories
+        List<Object[]> catRows = repo.sumByCategoryBetween(from, to);
+        List<FinanceAnalyticsResponse.CategorySpend> categories = new ArrayList<>();
+        for (Object[] row : catRows) {
+            String cat = (String) row[0];
+            Number sumNum = (Number) row[1];
+            long catTotal = sumNum != null ? sumNum.longValue() : 0L;
+            double pct = totalSpendVal > 0 ? (catTotal * 100.0 / totalSpendVal) : 0.0;
+            categories.add(new FinanceAnalyticsResponse.CategorySpend(
+                    cat != null ? cat : "Other",
+                    catTotal,
+                    Math.round(pct * 10.0) / 10.0
+            ));
+        }
+
+        // Daily breakdown
+        List<Transaction> txs = repo.findByTxDateBetweenOrderByTxDateDesc(from, to);
+        Map<LocalDate, List<Transaction>> byDate = txs.stream()
+                .filter(Transaction::isConfirmed)
+                .collect(Collectors.groupingBy(Transaction::getTxDate));
+
+        List<FinanceAnalyticsResponse.DailySpend> dailyList = new ArrayList<>();
+        LocalDate cur = from;
+        LocalDate maxDate = ym.equals(YearMonth.now()) ? today : to;
+        while (!cur.isAfter(maxDate)) {
+            List<Transaction> dayTxs = byDate.getOrDefault(cur, List.of());
+            long dayTotal = 0L;
+            long dayFixed = 0L;
+            long dayDisc = 0L;
+            for (Transaction t : dayTxs) {
+                long a = t.getAmount() != null ? t.getAmount() : 0L;
+                dayTotal += a;
+                if (t.getSpendType() == SpendType.FIXED) {
+                    dayFixed += a;
+                } else {
+                    dayDisc += a;
+                }
+            }
+            dailyList.add(new FinanceAnalyticsResponse.DailySpend(cur, dayTotal, dayFixed, dayDisc));
+            cur = cur.plusDays(1);
+        }
+
+        return new FinanceAnalyticsResponse(
+                ym.toString(),
+                budget,
+                totalSpendVal,
+                remaining,
+                fixedVal,
+                discVal,
+                burnRate,
+                safeDaily,
+                projected,
+                elapsedDays,
+                daysInMonth,
+                categories,
+                dailyList
+        );
     }
 }

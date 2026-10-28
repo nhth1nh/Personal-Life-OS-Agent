@@ -13,6 +13,7 @@ import com.ploa.health.service.HealthService;
 import com.ploa.profile.UserProfileService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
 import org.telegram.telegrambots.client.okhttp.OkHttpTelegramClient;
 import org.telegram.telegrambots.longpolling.interfaces.LongPollingUpdateConsumer;
@@ -48,6 +49,7 @@ import java.util.UUID;
  *  - Onboarding & profile commands → /init to inspect and configure base goals
  */
 @Component
+@ConditionalOnProperty(prefix = "ploa.telegram", name = "enabled", havingValue = "true", matchIfMissing = true)
 public class TelegramBotHandler implements SpringLongPollingBot, LongPollingUpdateConsumer {
 
     private static final Logger log = LoggerFactory.getLogger(TelegramBotHandler.class);

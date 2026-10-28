@@ -356,6 +356,10 @@ public class BriefingOrchestrator {
     }
 
     private void sendToTelegram(String text) {
+        if (!properties.telegram().enabled()) {
+            log.info("Telegram is disabled, skipping push briefing.");
+            return;
+        }
         if (telegramClient == null) {
             String token = properties.telegram().botToken();
             if (token != null && !token.isBlank()) {

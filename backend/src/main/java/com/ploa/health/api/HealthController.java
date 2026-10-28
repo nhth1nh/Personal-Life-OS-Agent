@@ -14,6 +14,7 @@ import org.springframework.web.bind.annotation.RestController;
 
 import com.ploa.health.api.dto.HealthSyncRequest;
 import com.ploa.health.api.dto.HealthSyncResponse;
+import com.ploa.health.api.dto.HealthTimeseriesResponse;
 import com.ploa.health.engine.dto.ReadinessResult;
 import com.ploa.health.engine.dto.SleepResult;
 import com.ploa.health.engine.dto.WeightEmaResult;
@@ -64,6 +65,15 @@ public class HealthController {
     @GetMapping("/sleep")
     public ResponseEntity<SleepResult> getSleepTrend() {
         return ResponseEntity.ok(healthService.computeSleepTrend());
+    }
+
+    /**
+     * Get multi-day historical timeseries with baselines and thresholds for frontend graphs.
+     */
+    @GetMapping("/timeseries")
+    public ResponseEntity<HealthTimeseriesResponse> getTimeseries(
+            @RequestParam(defaultValue = "30") int days) {
+        return ResponseEntity.ok(healthService.getTimeseries(days));
     }
 
     /**

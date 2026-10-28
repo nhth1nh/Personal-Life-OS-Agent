@@ -2,6 +2,8 @@ package com.ploa.finance.api;
 
 import com.ploa.ai.VisionOcrService;
 import com.ploa.ai.dto.OcrResult;
+import com.ploa.finance.api.dto.FinanceAnalyticsResponse;
+import com.ploa.finance.api.dto.OcrMetricsResponse;
 import com.ploa.finance.engine.dto.BurnRateResult;
 import com.ploa.finance.model.Transaction;
 import com.ploa.finance.service.FinanceService;
@@ -40,6 +42,15 @@ public class FinanceController {
     }
 
     /**
+     * Get comprehensive financial analytics and category breakdown for a given month.
+     */
+    @GetMapping("/analytics")
+    public ResponseEntity<FinanceAnalyticsResponse> getAnalytics(
+            @RequestParam(required = false) String month) {
+        return ResponseEntity.ok(financeService.getAnalytics(month));
+    }
+
+    /**
      * List recent transactions for the current month.
      */
     @GetMapping("/transactions")
@@ -52,7 +63,7 @@ public class FinanceController {
      * Get OCR stability and quality tracking metrics.
      */
     @GetMapping("/ocr/metrics")
-    public ResponseEntity<com.ploa.finance.api.dto.OcrMetricsResponse> getOcrMetrics() {
+    public ResponseEntity<OcrMetricsResponse> getOcrMetrics() {
         return ResponseEntity.ok(financeService.getOcrMetrics());
     }
 
