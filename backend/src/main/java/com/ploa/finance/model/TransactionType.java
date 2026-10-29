@@ -1,0 +1,12 @@
+package com.ploa.finance.model;
+
+public enum TransactionType {
+    INCOME,
+    EXPENSE_FIXED,
+    EXPENSE_DISCRETIONARY,
+    DEBT_PRINCIPAL_PAYMENT,
+    DEBT_INTEREST_AND_FEE,
+    INTERNAL_TRANSFER,
+    LOAN_DISBURSEMENT,
+    BALANCE_ADJUSTMENT
+}

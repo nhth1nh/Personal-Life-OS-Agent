@@ -14,6 +14,16 @@ public class Transaction {
     @GeneratedValue(strategy = GenerationType.UUID)
     private UUID id;
 
+    @Column(name = "account_id", nullable = false)
+    private UUID accountId = UUID.fromString("00000000-0000-0000-0000-000000000001");
+
+    @Column(name = "debt_id")
+    private UUID debtId;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "transaction_type", nullable = false, length = 30)
+    private TransactionType transactionType = TransactionType.EXPENSE_DISCRETIONARY;
+
     @Column(name = "tx_date", nullable = false)
     private LocalDate txDate;
 
@@ -72,6 +82,12 @@ public class Transaction {
 
     @PrePersist
     protected void onCreate() {
+        if (accountId == null) {
+            accountId = UUID.fromString("00000000-0000-0000-0000-000000000001");
+        }
+        if (transactionType == null) {
+            transactionType = (spendType == SpendType.FIXED) ? TransactionType.EXPENSE_FIXED : TransactionType.EXPENSE_DISCRETIONARY;
+        }
         createdAt = OffsetDateTime.now();
         updatedAt = OffsetDateTime.now();
     }
@@ -83,6 +99,13 @@ public class Transaction {
 
     // Getters & setters
     public UUID getId() { return id; }
+    public void setId(UUID id) { this.id = id; }
+    public UUID getAccountId() { return accountId; }
+    public void setAccountId(UUID accountId) { this.accountId = accountId; }
+    public UUID getDebtId() { return debtId; }
+    public void setDebtId(UUID debtId) { this.debtId = debtId; }
+    public TransactionType getTransactionType() { return transactionType; }
+    public void setTransactionType(TransactionType transactionType) { this.transactionType = transactionType; }
     public LocalDate getTxDate() { return txDate; }
     public void setTxDate(LocalDate txDate) { this.txDate = txDate; }
     public OffsetDateTime getTxTimestamp() { return txTimestamp; }
