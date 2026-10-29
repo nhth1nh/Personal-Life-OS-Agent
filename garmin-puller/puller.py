@@ -14,7 +14,7 @@ Pulls comprehensive daily & real-time health metrics from Garmin Connect:
 Schedules:
 - 06:30 daily: sync yesterday (finalize steps/calories) and today
 - Every 15 minutes: refresh today's real-time metrics (body battery, stress, steps, calories)
-- HTTP listener on :8081: enables on-demand /pull trigger from backend or user
+- HTTP listener on :8081: enables on-demand /pull trigger (single day or dynamic date range) from backend or user
 """
 
 import argparse
@@ -25,6 +25,7 @@ import threading
 import time
 from datetime import date, datetime, timedelta
 from http.server import BaseHTTPRequestHandler, HTTPServer
+from urllib.parse import parse_qs, urlparse
 
 import requests
 import schedule
@@ -225,7 +226,7 @@ class PullHandler(BaseHTTPRequestHandler):
         self.handle_trigger()
 
     def do_GET(self):
-        if self.path in ("/pull", "/sync", "/pull-now"):
+        if self.path.startswith("/pull") or self.path.startswith("/sync") or self.path.startswith("/pull-now"):
             self.handle_trigger()
         else:
             self.send_response(200)
@@ -248,12 +249,82 @@ class PullHandler(BaseHTTPRequestHandler):
                 self.wfile.write(b'{"error":"Unauthorized"}')
                 return
 
-        log.info("HTTP trigger received: initiating instant Garmin pull...")
-        success = pull_and_sync(date.today())
-        self.send_response(200 if success else 500)
+        # Parse query params and body
+        parsed_url = urlparse(self.path)
+        query = parse_qs(parsed_url.query)
+
+        body = {}
+        content_length = int(self.headers.get("Content-Length", 0))
+        if content_length > 0:
+            try:
+                body_bytes = self.rfile.read(content_length)
+                body = json.loads(body_bytes.decode("utf-8"))
+            except Exception as e:
+                log.warning(f"Failed to parse trigger JSON body: {e}")
+
+        # Resolve date range
+        start_date_str = (query.get("startDate", [None])[0] or
+                          query.get("start_date", [None])[0] or
+                          query.get("from", [None])[0] or
+                          body.get("startDate") or
+                          body.get("start_date"))
+        end_date_str = (query.get("endDate", [None])[0] or
+                        query.get("end_date", [None])[0] or
+                        query.get("to", [None])[0] or
+                        body.get("endDate") or
+                        body.get("end_date"))
+        days_val = query.get("days", [None])[0] or body.get("days")
+        target_date_str = query.get("date", [None])[0] or body.get("date")
+
+        today = date.today()
+        if target_date_str:
+            start_date = end_date = date.fromisoformat(target_date_str)
+        elif start_date_str and end_date_str:
+            start_date = date.fromisoformat(start_date_str)
+            end_date = date.fromisoformat(end_date_str)
+        elif days_val:
+            n_days = max(1, min(int(days_val), 180))
+            end_date = today
+            start_date = end_date - timedelta(days=n_days - 1)
+        elif start_date_str:
+            start_date = date.fromisoformat(start_date_str)
+            end_date = today
+        else:
+            start_date = end_date = today
+
+        if start_date > end_date:
+            start_date, end_date = end_date, start_date
+
+        log.info(f"HTTP trigger received: syncing dynamic range from {start_date} to {end_date}...")
+        cur = start_date
+        synced = 0
+        failed = 0
+        dates_processed = []
+
+        while cur <= end_date:
+            ok = pull_and_sync(cur)
+            if ok:
+                synced += 1
+            else:
+                failed += 1
+            dates_processed.append(cur.isoformat())
+            cur += timedelta(days=1)
+            if cur <= end_date:
+                time.sleep(0.3)
+
+        success = synced > 0
+        self.send_response(200 if success else 502)
         self.send_header("Content-Type", "application/json")
         self.end_headers()
-        res = {"status": "success" if success else "failed", "date": date.today().isoformat()}
+        res = {
+            "status": "success" if success else "failed",
+            "message": f"Synced {synced} day(s) from {start_date.isoformat()} to {end_date.isoformat()}" + (f" ({failed} failed)" if failed > 0 else ""),
+            "startDate": start_date.isoformat(),
+            "endDate": end_date.isoformat(),
+            "syncedDays": synced,
+            "failedDays": failed,
+            "dates": dates_processed
+        }
         self.wfile.write(json.dumps(res).encode("utf-8"))
 
     def log_message(self, format, *args):

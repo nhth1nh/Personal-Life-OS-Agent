@@ -41,12 +41,56 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   return res.json() as Promise<T>;
 }
 
+export interface SyncGarminOptions {
+  startDate?: string;
+  endDate?: string;
+  days?: number;
+}
+
+export interface SyncGarminResponse {
+  status: string;
+  message: string;
+  startDate?: string;
+  endDate?: string;
+  syncedDays?: number;
+  failedDays?: number;
+  dates?: string[];
+}
+
+export interface BatchSyncResponse {
+  status: string;
+  syncedCount: number;
+  startDate: string;
+  endDate: string;
+  message: string;
+}
+
 export const api = {
   // Health
-  getHealthTimeseries: (days = 30) => request<HealthTimeseriesResponse>(`/health/timeseries?days=${days}`),
+  getHealthTimeseries: (days = 30, startDate?: string, endDate?: string) => {
+    let url = `/health/timeseries?days=${days}`;
+    if (startDate && endDate) {
+      url = `/health/timeseries?startDate=${startDate}&endDate=${endDate}`;
+    }
+    return request<HealthTimeseriesResponse>(url);
+  },
   getReadiness: (date = 'today') => request<ReadinessResult>(`/health/readiness?date=${date}`),
   getTodayBiometrics: () => request<any>('/health/today'),
-  triggerGarminPull: () => request<{ status: string; message: string }>('/health/pull', { method: 'POST' }),
+  triggerGarminPull: (options?: SyncGarminOptions) => {
+    let url = '/health/pull';
+    const params = new URLSearchParams();
+    if (options?.startDate) params.set('startDate', options.startDate);
+    if (options?.endDate) params.set('endDate', options.endDate);
+    if (options?.days) params.set('days', options.days.toString());
+    const qs = params.toString();
+    if (qs) url += `?${qs}`;
+    return request<SyncGarminResponse>(url, { method: 'POST' });
+  },
+  syncBatchHealthMetrics: (metrics: any[]) => request<BatchSyncResponse>('/health/sync/batch', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(metrics),
+  }),
 
   // Finance
   getFinanceAnalytics: (month?: string) => request<FinanceAnalyticsResponse>(month ? `/finance/analytics?month=${month}` : '/finance/analytics'),
@@ -81,7 +125,7 @@ export const api = {
       const formData = new FormData();
       formData.append('message', message);
       formData.append('file', file);
-      const res = await fetch(`${API_BASE}/assistant/chat/multimodal`, {
+      const res = await fetch(`${API_BASE}/chat/multimodal`, {
         method: 'POST',
         headers: { 'X-API-Key': apiKey },
         body: formData,
@@ -89,7 +133,7 @@ export const api = {
       if (!res.ok) throw new Error(`Chat failed: ${res.statusText}`);
       return res.json();
     } else {
-      return request<{ reply: string }>('/assistant/chat', {
+      return request<{ reply: string }>('/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ message }),

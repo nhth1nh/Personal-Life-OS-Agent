@@ -8,7 +8,9 @@ import {
   RefreshCw, 
   KeyRound, 
   CheckCircle2,
-  XCircle
+  XCircle,
+  Calendar,
+  ChevronDown
 } from 'lucide-react';
 import { api, getApiKey, setApiKey } from '../api/client';
 
@@ -22,20 +24,45 @@ export const Header: React.FC<HeaderProps> = ({ currentTab, onTabChange, onRefre
   const [syncing, setSyncing] = useState(false);
   const [syncMsg, setSyncMsg] = useState<{ text: string; ok: boolean } | null>(null);
   const [showKeyModal, setShowKeyModal] = useState(false);
+  const [showSyncModal, setShowSyncModal] = useState(false);
   const [keyInput, setKeyInput] = useState(getApiKey());
 
-  const handleGarminSync = async () => {
+  // Dynamic range sync states
+  const [syncMode, setSyncMode] = useState<'today' | '7days' | '30days' | 'custom'>('today');
+  const [customStart, setCustomStart] = useState<string>(() => {
+    const d = new Date();
+    d.setDate(d.getDate() - 7);
+    return d.toISOString().split('T')[0];
+  });
+  const [customEnd, setCustomEnd] = useState<string>(() => new Date().toISOString().split('T')[0]);
+
+  const handleExecuteSync = async () => {
+    setShowSyncModal(false);
     try {
       setSyncing(true);
       setSyncMsg(null);
-      const res = await api.triggerGarminPull();
-      setSyncMsg({ text: res.message || 'Garmin sync completed', ok: true });
+      let options: { startDate?: string; endDate?: string; days?: number } = {};
+      if (syncMode === 'today') {
+        options = { days: 1 };
+      } else if (syncMode === '7days') {
+        options = { days: 7 };
+      } else if (syncMode === '30days') {
+        options = { days: 30 };
+      } else if (syncMode === 'custom') {
+        options = { startDate: customStart, endDate: customEnd };
+      }
+
+      const res = await api.triggerGarminPull(options);
+      setSyncMsg({ 
+        text: res.message || `Garmin sync completed (${res.syncedDays || 1} day(s))`, 
+        ok: res.status === 'success' 
+      });
       onRefreshAll();
     } catch (err: any) {
       setSyncMsg({ text: err.message || 'Garmin sync failed', ok: false });
     } finally {
       setSyncing(false);
-      setTimeout(() => setSyncMsg(null), 5000);
+      setTimeout(() => setSyncMsg(null), 7000);
     }
   };
 
@@ -95,13 +122,14 @@ export const Header: React.FC<HeaderProps> = ({ currentTab, onTabChange, onRefre
 
           <div className="flex items-center space-x-2">
             <button
-              onClick={handleGarminSync}
+              onClick={() => setShowSyncModal(true)}
               disabled={syncing}
-              title="Trigger on-demand Garmin Watch Sync"
+              title="Sync Garmin Watch Biometrics (Dynamic Range)"
               className="flex items-center space-x-1.5 px-3 py-1.5 rounded-lg bg-slate-800/80 hover:bg-slate-700/80 border border-slate-700 text-xs text-slate-200 transition-all font-medium disabled:opacity-50"
             >
               <RefreshCw className={`w-3.5 h-3.5 text-cyan-400 ${syncing ? 'animate-spin' : ''}`} />
-              <span className="hidden sm:inline">{syncing ? 'Syncing...' : 'Garmin Sync'}</span>
+              <span className="hidden sm:inline">{syncing ? 'Syncing...' : 'Sync Garmin'}</span>
+              <ChevronDown className="w-3 h-3 text-slate-400" />
             </button>
 
             <button
@@ -126,6 +154,99 @@ export const Header: React.FC<HeaderProps> = ({ currentTab, onTabChange, onRefre
         )}
       </header>
 
+      {/* Sync Range Modal */}
+      {showSyncModal && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 max-w-md w-full shadow-2xl">
+            <div className="flex items-center space-x-3 mb-4">
+              <div className="w-10 h-10 rounded-xl bg-cyan-500/10 border border-cyan-500/20 flex items-center justify-center">
+                <RefreshCw className="w-5 h-5 text-cyan-400" />
+              </div>
+              <div>
+                <h3 className="font-semibold text-slate-100">Sync Garmin Biometrics</h3>
+                <p className="text-xs text-slate-400">Trigger on-demand sync for a dynamic date window</p>
+              </div>
+            </div>
+
+            <div className="space-y-2 mb-4">
+              {[
+                { id: 'today', label: 'Today Only (Live Biometrics)', desc: 'Real-time Body Battery, stress, steps, kcal' },
+                { id: '7days', label: 'Last 7 Days', desc: 'Refresh recent sleep debt & readiness baseline' },
+                { id: '30days', label: 'Last 30 Days (Backfill)', desc: 'Comprehensive rolling recovery baselines' },
+                { id: 'custom', label: 'Custom Date Range', desc: 'Specify arbitrary start and end dates' },
+              ].map((opt) => (
+                <label
+                  key={opt.id}
+                  onClick={() => setSyncMode(opt.id as any)}
+                  className={`flex items-start space-x-3 p-3 rounded-xl border cursor-pointer transition-all ${
+                    syncMode === opt.id
+                      ? 'bg-cyan-950/30 border-cyan-500/60 text-cyan-200'
+                      : 'bg-slate-950/50 border-slate-800/80 text-slate-300 hover:border-slate-700'
+                  }`}
+                >
+                  <input
+                    type="radio"
+                    name="syncMode"
+                    checked={syncMode === opt.id}
+                    onChange={() => setSyncMode(opt.id as any)}
+                    className="mt-0.5 text-cyan-500 focus:ring-cyan-500"
+                  />
+                  <div>
+                    <div className="text-xs font-semibold text-slate-100">{opt.label}</div>
+                    <div className="text-[11px] text-slate-400">{opt.desc}</div>
+                  </div>
+                </label>
+              ))}
+            </div>
+
+            {syncMode === 'custom' && (
+              <div className="grid grid-cols-2 gap-3 mb-4 p-3 bg-slate-950 rounded-xl border border-slate-800">
+                <div>
+                  <label className="block text-[11px] font-medium text-slate-400 mb-1 flex items-center space-x-1">
+                    <Calendar className="w-3 h-3 text-cyan-400" />
+                    <span>Start Date</span>
+                  </label>
+                  <input
+                    type="date"
+                    value={customStart}
+                    onChange={(e) => setCustomStart(e.target.value)}
+                    className="w-full bg-slate-900 border border-slate-800 rounded-lg px-2.5 py-1.5 text-xs text-slate-100 focus:outline-none focus:border-cyan-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[11px] font-medium text-slate-400 mb-1 flex items-center space-x-1">
+                    <Calendar className="w-3 h-3 text-cyan-400" />
+                    <span>End Date</span>
+                  </label>
+                  <input
+                    type="date"
+                    value={customEnd}
+                    onChange={(e) => setCustomEnd(e.target.value)}
+                    className="w-full bg-slate-900 border border-slate-800 rounded-lg px-2.5 py-1.5 text-xs text-slate-100 focus:outline-none focus:border-cyan-500"
+                  />
+                </div>
+              </div>
+            )}
+
+            <div className="flex justify-end space-x-2">
+              <button
+                onClick={() => setShowSyncModal(false)}
+                className="px-4 py-1.5 rounded-lg text-xs font-medium text-slate-400 hover:text-slate-200"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleExecuteSync}
+                className="px-4 py-1.5 rounded-lg text-xs font-medium bg-cyan-600 hover:bg-cyan-500 text-white shadow-md shadow-cyan-600/30 font-semibold"
+              >
+                Start Sync
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* API Key Modal */}
       {showKeyModal && (
         <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
           <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 max-w-md w-full shadow-2xl">

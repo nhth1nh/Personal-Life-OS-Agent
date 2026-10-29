@@ -1,5 +1,7 @@
 package com.ploa.health;
 
+import com.ploa.health.api.dto.HealthBatchSyncResponse;
+import com.ploa.health.api.dto.HealthSyncRequest;
 import com.ploa.health.api.dto.HealthTimeseriesResponse;
 import com.ploa.health.model.HealthMetric;
 import com.ploa.health.repository.HealthMetricRepository;
@@ -12,6 +14,7 @@ import org.mockito.Mockito;
 
 import java.time.LocalDate;
 import java.util.List;
+import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
@@ -82,5 +85,52 @@ class HealthTimeseriesTest {
         assertThat(todayPoint.sleepDurationHours()).isEqualTo(7.5);
         assertThat(todayPoint.sleepDebtHours()).isEqualTo(0.5);
         assertThat(todayPoint.steps()).isEqualTo(11000);
+    }
+
+    @Test
+    @DisplayName("getTimeseries supports custom dynamic date range")
+    void getTimeseries_dynamicRange_success() {
+        LocalDate start = LocalDate.of(2026, 10, 1);
+        LocalDate end = LocalDate.of(2026, 10, 5);
+
+        when(repo.findHrvMetricsSince(any())).thenReturn(List.of());
+        when(repo.findRhrMetricsSince(any())).thenReturn(List.of());
+        when(repo.findByDateBetweenOrderByDateDesc(start, end)).thenReturn(List.of());
+        when(repo.findLatestWeightEntries(any(Integer.class))).thenReturn(List.of());
+
+        HealthTimeseriesResponse res = healthService.getTimeseries(start, end);
+
+        assertThat(res.days()).isEqualTo(5);
+        assertThat(res.points()).hasSize(5);
+        assertThat(res.points().getFirst().date()).isEqualTo(start);
+        assertThat(res.points().getLast().date()).isEqualTo(end);
+    }
+
+    @Test
+    @DisplayName("upsertBatch persists dynamic range list and returns summary response")
+    void upsertBatch_success() {
+        LocalDate d1 = LocalDate.of(2026, 10, 10);
+        LocalDate d2 = LocalDate.of(2026, 10, 11);
+
+        HealthSyncRequest r1 = new HealthSyncRequest(
+                d1, 70.0, null, 50, null, null, 480, 100, 100, 200, 80, 85,
+                null, null, null, null, null, null, null, null, 8000, 500, 2200,
+                null, null, null, null, null, null, 68.0, null
+        );
+        HealthSyncRequest r2 = new HealthSyncRequest(
+                d2, 72.0, null, 49, null, null, 500, 120, 110, 220, 50, 90,
+                null, null, null, null, null, null, null, null, 10000, 600, 2300,
+                null, null, null, null, null, null, 67.8, null
+        );
+
+        when(repo.findById(any())).thenReturn(Optional.empty());
+        when(repo.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
+
+        HealthBatchSyncResponse batchRes = healthService.upsertBatch(List.of(r1, r2));
+
+        assertThat(batchRes.status()).isEqualTo("OK");
+        assertThat(batchRes.syncedCount()).isEqualTo(2);
+        assertThat(batchRes.startDate()).isEqualTo(d1);
+        assertThat(batchRes.endDate()).isEqualTo(d2);
     }
 }

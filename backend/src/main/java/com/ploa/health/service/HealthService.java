@@ -1,8 +1,10 @@
 package com.ploa.health.service;
 
 import com.ploa.config.PloaProperties;
+import com.ploa.health.api.dto.HealthBatchSyncResponse;
 import com.ploa.health.api.dto.HealthSyncRequest;
 import com.ploa.health.api.dto.HealthTimeseriesResponse;
+import com.ploa.health.api.dto.SyncRangeResponse;
 import com.ploa.health.engine.ReadinessEngine;
 import com.ploa.health.engine.SleepEngine;
 import com.ploa.health.engine.WeightEmaEngine;
@@ -22,6 +24,7 @@ import org.springframework.web.client.RestClient;
 
 import java.time.Duration;
 import java.time.LocalDate;
+import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -57,7 +60,7 @@ public class HealthService {
 
         SimpleClientHttpRequestFactory factory = new SimpleClientHttpRequestFactory();
         factory.setConnectTimeout(Duration.ofSeconds(5));
-        factory.setReadTimeout(Duration.ofSeconds(30));
+        factory.setReadTimeout(Duration.ofSeconds(60));
         this.restClient = RestClient.builder()
                 .requestFactory(factory)
                 .build();
@@ -119,6 +122,33 @@ public class HealthService {
         return saved;
     }
 
+    /**
+     * Batch upsert for a dynamic range of dates.
+     */
+    @Transactional
+    public HealthBatchSyncResponse upsertBatch(List<HealthSyncRequest> requests) {
+        if (requests == null || requests.isEmpty()) {
+            return new HealthBatchSyncResponse("OK", 0, null, null, "No records provided");
+        }
+        LocalDate minDate = null;
+        LocalDate maxDate = null;
+        int count = 0;
+        for (HealthSyncRequest req : requests) {
+            if (req.date() == null) continue;
+            upsert(req);
+            count++;
+            if (minDate == null || req.date().isBefore(minDate)) minDate = req.date();
+            if (maxDate == null || req.date().isAfter(maxDate)) maxDate = req.date();
+        }
+        return new HealthBatchSyncResponse(
+                "OK",
+                count,
+                minDate,
+                maxDate,
+                "Successfully synced " + count + " health metric records"
+        );
+    }
+
     @Transactional(readOnly = true)
     public ReadinessResult computeReadiness(LocalDate date) {
         return readinessEngine.compute(date);
@@ -136,24 +166,49 @@ public class HealthService {
 
     @Transactional(readOnly = true)
     public HealthMetric getMetricsForDate(LocalDate date) {
-        return repo.findById(date != null ? date : LocalDate.now()).orElse(null);
+        return repo.findById(date).orElse(null);
     }
 
     /**
-     * Compute chronological daily points for charting with baselines and thresholds.
+     * Compute chronological daily points for charting with baselines and thresholds over past N days.
      */
     @Transactional(readOnly = true)
     public HealthTimeseriesResponse getTimeseries(int days) {
-        int cappedDays = Math.max(7, Math.min(days, 365));
+        int cappedDays = Math.max(1, Math.min(days, 365));
         LocalDate today = LocalDate.now();
         LocalDate start = today.minusDays(cappedDays - 1);
+        return getTimeseries(start, today);
+    }
+
+    /**
+     * Compute chronological daily points for charting with baselines and thresholds over a dynamic range.
+     */
+    @Transactional(readOnly = true)
+    public HealthTimeseriesResponse getTimeseries(LocalDate start, LocalDate end) {
+        if (start == null && end == null) {
+            return getTimeseries(30);
+        }
+        if (end == null) {
+            end = LocalDate.now();
+        }
+        if (start == null) {
+            start = end.minusDays(29);
+        }
+        if (start.isAfter(end)) {
+            LocalDate tmp = start;
+            start = end;
+            end = tmp;
+        }
+
+        int daysCount = (int) ChronoUnit.DAYS.between(start, end) + 1;
+        int cappedDays = Math.max(1, Math.min(daysCount, 365));
 
         double targetWeight = profileService != null ? profileService.getTargetWeightKg() : 68.0;
         double sleepTarget = profileService != null ? profileService.getSleepTargetHours() : 7.5;
         int baselineWindow = profileService != null ? profileService.getBaselineWindowDays() : 30;
 
-        // Baseline HRV and RHR
-        LocalDate baselineStart = today.minusDays(baselineWindow);
+        // Baseline HRV and RHR calculated relative to the end date
+        LocalDate baselineStart = end.minusDays(baselineWindow);
         List<HealthMetric> hrvBaselines = repo.findHrvMetricsSince(baselineStart);
         List<HealthMetric> rhrBaselines = repo.findRhrMetricsSince(baselineStart);
 
@@ -180,7 +235,7 @@ public class HealthService {
         }
 
         // Fetch metrics in range
-        List<HealthMetric> rangeMetrics = repo.findByDateBetweenOrderByDateDesc(start, today);
+        List<HealthMetric> rangeMetrics = repo.findByDateBetweenOrderByDateDesc(start, end);
         Map<LocalDate, HealthMetric> byDate = rangeMetrics.stream()
                 .collect(Collectors.toMap(HealthMetric::getDate, m -> m, (m1, m2) -> m1));
 
@@ -200,7 +255,7 @@ public class HealthService {
 
         List<HealthTimeseriesResponse.HealthDailyPoint> points = new ArrayList<>();
         LocalDate cur = start;
-        while (!cur.isAfter(today)) {
+        while (!cur.isAfter(end)) {
             HealthMetric m = byDate.get(cur);
             Double hrv = m != null ? m.getHrvRmssd() : null;
             Integer rhr = m != null ? m.getRhr() : null;
@@ -279,26 +334,51 @@ public class HealthService {
     }
 
     /**
-     * Trigger an on-demand real-time pull from Garmin Connect via the puller sidecar.
-     *
-     * @return true if successful, false otherwise
+     * Trigger an on-demand real-time pull from Garmin Connect for today.
      */
     public boolean triggerGarminPull() {
+        return "success".equalsIgnoreCase(triggerGarminPull(null, null, null).status());
+    }
+
+    /**
+     * Trigger an on-demand real-time pull from Garmin Connect for a dynamic range.
+     */
+    public SyncRangeResponse triggerGarminPull(LocalDate startDate, LocalDate endDate, Integer days) {
         try {
             String apiKey = (properties != null && properties.security() != null)
                     ? properties.security().apiKey()
                     : "";
-            log.info("Triggering Garmin pull on :8081 (API key configured: {})", apiKey != null && !apiKey.isBlank());
-            restClient.post()
-                    .uri("http://garmin-puller:8081/pull")
+            StringBuilder uri = new StringBuilder("http://garmin-puller:8081/pull");
+            boolean hasParam = false;
+            if (startDate != null) {
+                uri.append(hasParam ? "&" : "?").append("startDate=").append(startDate);
+                hasParam = true;
+            }
+            if (endDate != null) {
+                uri.append(hasParam ? "&" : "?").append("endDate=").append(endDate);
+                hasParam = true;
+            }
+            if (days != null) {
+                uri.append(hasParam ? "&" : "?").append("days=").append(days);
+                hasParam = true;
+            }
+            String finalUri = uri.toString();
+            log.info("Triggering Garmin pull on :8081 with uri: {} (API key configured: {})", finalUri, apiKey != null && !apiKey.isBlank());
+            var response = restClient.post()
+                    .uri(finalUri)
                     .header("X-API-Key", apiKey != null ? apiKey.trim() : "")
                     .retrieve()
-                    .toBodilessEntity();
-            log.info("Garmin on-demand pull successfully completed");
-            return true;
+                    .toEntity(SyncRangeResponse.class);
+
+            SyncRangeResponse body = response.getBody();
+            if (body != null) {
+                log.info("Garmin on-demand pull successfully completed: {}", body.message());
+                return body;
+            }
+            return SyncRangeResponse.success("Garmin pull completed", startDate, endDate, 1, 0);
         } catch (Exception e) {
             log.error("Failed to trigger on-demand Garmin pull: {}", e.getMessage());
-            return false;
+            return SyncRangeResponse.error("Failed to trigger Garmin pull: " + e.getMessage());
         }
     }
 }
