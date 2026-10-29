@@ -19,7 +19,7 @@ public class BriefingController {
     /**
      * Preview today's AI morning briefing text without sending it to Telegram.
      */
-    @GetMapping("/preview")
+    @GetMapping({"/preview", "/morning/preview"})
     public ResponseEntity<Map<String, String>> preview() {
         String briefing = orchestrator.generateBriefingPreview();
         return ResponseEntity.ok(Map.of("briefing", briefing));
@@ -28,7 +28,7 @@ public class BriefingController {
     /**
      * Manually trigger morning briefing synthesis and push to Telegram.
      */
-    @PostMapping("/trigger")
+    @PostMapping({"/trigger", "/morning/trigger"})
     public ResponseEntity<Map<String, String>> trigger() {
         orchestrator.sendMorningBriefing();
         return ResponseEntity.ok(Map.of("status", "sent"));

@@ -4,11 +4,15 @@ import com.ploa.assistant.AssistantService;
 import com.ploa.assistant.dto.ChatRequest;
 import com.ploa.assistant.dto.ChatResponse;
 import jakarta.validation.Valid;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile;
+
+import java.io.IOException;
 
 @RestController
-@RequestMapping("/api/v1/chat")
+@RequestMapping({"/api/v1/chat", "/api/v1/assistant/chat"})
 public class ChatController {
 
     private final AssistantService assistantService;
@@ -27,6 +31,29 @@ public class ChatController {
                 : "api-session";
         String reply = assistantService.chat(chatId, request.message());
         return ResponseEntity.ok(new ChatResponse(reply, "CHAT"));
+    }
+
+    /**
+     * Multimodal chat endpoint supporting attached images (receipts, charts, fitness photos).
+     */
+    @PostMapping(value = "/multimodal", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public ResponseEntity<ChatResponse> chatMultimodal(
+            @RequestParam(value = "message", required = false, defaultValue = "") String message,
+            @RequestParam(value = "file", required = false) MultipartFile file,
+            @RequestParam(value = "chatId", required = false, defaultValue = "api-session") String chatId) {
+        byte[] imageBytes = null;
+        String mimeType = null;
+        if (file != null && !file.isEmpty()) {
+            try {
+                imageBytes = file.getBytes();
+                mimeType = file.getContentType();
+            } catch (IOException e) {
+                return ResponseEntity.badRequest().body(new ChatResponse("Failed to read attached file: " + e.getMessage(), "ERROR"));
+            }
+        }
+        var result = assistantService.chatDetailed(chatId, message, imageBytes, mimeType);
+        String intent = result.recordedTransaction() != null ? "EXPENSE" : "CHAT";
+        return ResponseEntity.ok(new ChatResponse(result.reply(), intent));
     }
 
     /**

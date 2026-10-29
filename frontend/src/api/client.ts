@@ -9,7 +9,7 @@ import type {
 const API_BASE = '/api/v1';
 
 export function getApiKey(): string {
-  return localStorage.getItem('ploa_api_key') || 'changeme-strong-secret';
+  return localStorage.getItem('ploa_api_key') || 'ploa';
 }
 
 export function setApiKey(key: string): void {
