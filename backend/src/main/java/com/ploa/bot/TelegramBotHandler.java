@@ -49,7 +49,7 @@ import java.util.UUID;
  *  - Onboarding & profile commands → /init to inspect and configure base goals
  */
 @Component
-@ConditionalOnProperty(prefix = "ploa.telegram", name = "enabled", havingValue = "true", matchIfMissing = true)
+@ConditionalOnProperty(prefix = "ploa.telegram", name = "enabled", havingValue = "true", matchIfMissing = false)
 public class TelegramBotHandler implements SpringLongPollingBot, LongPollingUpdateConsumer {
 
     private static final Logger log = LoggerFactory.getLogger(TelegramBotHandler.class);
@@ -92,7 +92,7 @@ public class TelegramBotHandler implements SpringLongPollingBot, LongPollingUpda
         this.assistantService = assistantService;
         this.messageFactory = messageFactory;
         this.profileService = profileService;
-        String token = properties.telegram().botToken();
+        String token = (properties != null && properties.telegram() != null) ? properties.telegram().botToken() : null;
         this.telegramClient = (token != null && !token.isBlank())
                 ? new OkHttpTelegramClient(token)
                 : null;
@@ -100,7 +100,7 @@ public class TelegramBotHandler implements SpringLongPollingBot, LongPollingUpda
 
     @Override
     public String getBotToken() {
-        String token = properties.telegram().botToken();
+        String token = (properties != null && properties.telegram() != null) ? properties.telegram().botToken() : null;
         return token != null ? token : "";
     }
 
@@ -664,6 +664,7 @@ public class TelegramBotHandler implements SpringLongPollingBot, LongPollingUpda
     }
 
     boolean isAllowed(long chatId) {
+        if (properties == null || properties.telegram() == null) return false;
         List<Long> allowed = properties.telegram().allowedChatIdList();
         return !allowed.isEmpty() && allowed.contains(chatId);
     }

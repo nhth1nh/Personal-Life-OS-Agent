@@ -97,7 +97,7 @@ public class BriefingOrchestrator {
         this.temporalContext = temporalContext;
         this.chatClient = chatClientBuilder.build();
         this.properties = properties;
-        String token = properties.telegram().botToken();
+        String token = (properties != null && properties.telegram() != null) ? properties.telegram().botToken() : null;
         if (token != null && !token.isBlank()) {
             this.telegramClient = new OkHttpTelegramClient(token);
         }
@@ -356,12 +356,12 @@ public class BriefingOrchestrator {
     }
 
     private void sendToTelegram(String text) {
-        if (!properties.telegram().enabled()) {
+        if (properties == null || properties.telegram() == null || !properties.telegram().enabled()) {
             log.info("Telegram is disabled, skipping push briefing.");
             return;
         }
         if (telegramClient == null) {
-            String token = properties.telegram().botToken();
+            String token = (properties != null && properties.telegram() != null) ? properties.telegram().botToken() : null;
             if (token != null && !token.isBlank()) {
                 telegramClient = new OkHttpTelegramClient(token);
             } else {

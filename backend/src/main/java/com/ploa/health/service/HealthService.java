@@ -15,6 +15,7 @@ import com.ploa.profile.UserProfileService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.client.SimpleClientHttpRequestFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.client.RestClient;
@@ -40,6 +41,7 @@ public class HealthService {
     private final UserProfileService profileService;
     private final RestClient restClient;
 
+    @Autowired
     public HealthService(HealthMetricRepository repo,
                          ReadinessEngine readinessEngine,
                          WeightEmaEngine weightEmaEngine,

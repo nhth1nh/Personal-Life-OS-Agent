@@ -12,6 +12,7 @@ import com.ploa.finance.repository.OcrAuditRepository;
 import com.ploa.finance.repository.TransactionRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -46,6 +47,7 @@ public class FinanceService {
         this(repo, ocrAuditRepo, burnRateEngine, null);
     }
 
+    @Autowired
     public FinanceService(TransactionRepository repo,
                           OcrAuditRepository ocrAuditRepo,
                           BurnRateEngine burnRateEngine,

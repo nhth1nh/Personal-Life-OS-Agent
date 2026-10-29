@@ -12,6 +12,18 @@ public record PloaProperties(
         Briefing briefing,
         Ai ai
 ) {
+    public PloaProperties {
+        if (telegram == null) {
+            telegram = new Telegram(false, null, null, null);
+        }
+        if (security == null) {
+            security = new Security("changeme-strong-secret");
+        }
+        if (briefing == null) {
+            briefing = new Briefing(null, "Asia/Ho_Chi_Minh", "0 30 7 * * *", "0 30 21 * * *");
+        }
+    }
+
     public record Security(String apiKey) {}
 
     public record Telegram(

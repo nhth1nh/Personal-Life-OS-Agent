@@ -45,7 +45,7 @@ ploa:
   security:
     api-key: ${API_SECRET_KEY:changeme-strong-secret}
   telegram:
-    enabled: ${TELEGRAM_ENABLED:true}
+    enabled: ${TELEGRAM_ENABLED:false}
     bot-token: ${TELEGRAM_BOT_TOKEN:}
     bot-username: ${TELEGRAM_BOT_USERNAME:}
     allowed-chat-ids: ${TELEGRAM_ALLOWED_CHAT_IDS:}
