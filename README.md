@@ -18,38 +18,39 @@ Unlike superficial AI wrappers, PLOA enforces a strict separation between **dete
 
 ```mermaid
 flowchart TD
-    subgraph Ingestion["1. Data Ingestion Layer"]
-        A["Garmin Connect Cloud"] -->|Passive Scheduled Pull| B["Garmin Puller Sidecar\n(Python Daemon)"]
-        B -->|POST /api/v1/health/sync| C["PLOA Backend\n(Spring Boot 3.4 / Java 25)"]
+    subgraph Clients["1. Clients & Ingestion"]
+        UI["Web App & PWA (:3000)\n• Dashboard & Briefings\n• HRV & Biometric Trajectories\n• Category Donut & Spend Ledger\n• Direct Camera Receipt OCR\n• AI Assistant Chat"]
+        TB["Telegram Bot Gateway\n(Optional / Dual-Mode)"]
+        G["Garmin Puller Sidecar\n(Python Daemon)"]
 
-        D["User (Mobile / Desktop)"] -->|Receipt / Transfer Photo| E["Telegram Bot Gateway\n(@PL0A_bot)"]
-        D -->|Natural Text Expense| E
-        D -->|Health & Finance Questions| E
-        E -->|Long-polling events| C
+        UI -->|REST / Reverse Proxy| BE["PLOA Backend\n(Spring Boot 3.4 / Java 25)"]
+        TB -.->|Long-polling events| BE
+        G -->|POST /api/v1/health/sync| BE
     end
 
     subgraph Engines["2. Deterministic Engines (Java)"]
-        C --> F["Health Engine\n• 30d Rolling Mean & StdDev\n• HRV & RHR Z-Scores\n• Sleep Debt & Restorative Ratio\n• 7-day Weight EMA Smoothing"]
-        C --> G["Finance Engine\n• Month-to-date Spend Aggregation\n• Daily Burn Rate\n• Safe Daily Allowance\n• Projected Savings Rate"]
+        BE --> F["Health Engine\n• 30d Rolling Mean & StdDev\n• HRV & RHR Z-Scores\n• Sleep Debt & Restorative Ratio\n• 7-day Weight EMA Smoothing"]
+        BE --> G2["Finance Engine\n• Month-to-date Spend Aggregation\n• Daily Burn Rate\n• Safe Daily Allowance\n• Projected Savings Rate"]
     end
 
     subgraph AI["3. AI Semantic & Synthesis Layer"]
-        C --> H["Vision OCR Service\n(Gemini 2.5 / Qwen2.5-VL)\n• Entity Extraction from Images"]
-        C --> I["Life OS Assistant Service\n• Real-Time Context Grounding\n• Conversational Advisory"]
-        F --> J["Briefing Orchestrator (07:30 AM)\n• Narrative Daily Briefing"]
-        G --> J
-        J -->|Push Morning Briefing| E
+        BE --> H["Vision OCR Service\n(Gemini 2.5 / Qwen2.5-VL)\n• Entity Extraction from Images"]
+        BE --> I["Life OS Assistant Service\n• Real-Time Context Grounding\n• Conversational Advisory"]
+        F --> J["Briefing Orchestrator (07:30 AM / 21:30 PM)\n• Narrative Daily Briefing"]
+        G2 --> J
+        J -->|Push Briefing| TB
     end
 
     subgraph Storage["4. Persistence & Observability"]
         F --> K[("PostgreSQL 16\n(Flyway Migrations\nJSONB Schema)")]
-        G --> K
-        C --> L["Actuator & Health Metrics\n(/actuator/health)"]
+        G2 --> K
+        BE --> L["Actuator & Health Metrics\n(/actuator/health)"]
     end
 
-    style C fill:#1a73e8,color:#fff
+    style BE fill:#1a73e8,color:#fff
+    style UI fill:#0d9488,color:#fff
     style K fill:#336791,color:#fff
-    style E fill:#229ED9,color:#fff
+    style TB fill:#229ED9,color:#fff
 ```
 
 ---
@@ -228,6 +229,7 @@ All protected endpoints accept authentication through any of the following metho
 | **GET** | `/api/v1/health/today` | Retrieve comprehensive live biometrics for today (Body Battery, Stress, Calories, Steps, etc.). | *(None)* |
 | **POST** | `/api/v1/health/pull` | Trigger immediate on-demand synchronization from the Garmin sidecar. | *(None)* |
 | **POST** | `/api/v1/health/sync` | Ingest daily physiological metrics (idempotent upsert). | `{"date":"2026-10-19", "hrvRmssd":50, "rhr":53, ...}` |
+| **GET** | `/api/v1/health/timeseries` | Multi-day historical telemetry time-series with rolling $\mu \pm 1\sigma$ recovery corridor, sleep staging, and weight EMA. | `?days=30` (default: 30) |
 | **GET** | `/api/v1/health/readiness` | Compute 30-day rolling Z-scores, sleep debt, and recovery state. | `?date=today` or `?date=2026-10-19` |
 | **GET** | `/api/v1/health/weight` | Calculate 7-day EMA weight trend and delta to goal. | *(None)* |
 | **GET** | `/api/v1/health/sleep` | Retrieve sleep breakdown (deep, light, REM) and 7-day weekly trend. | *(None)* |
@@ -235,6 +237,7 @@ All protected endpoints accept authentication through any of the following metho
 ### 2. Financial Ledger
 | Method | Endpoint | Description | Query / Body |
 |---|---|---|---|
+| **GET** | `/api/v1/finance/analytics` | Comprehensive monthly analytics: budget burn rate, safe daily allowance, fixed vs. discretionary split, and category distribution percentages. | `?month=YYYY-MM` (default: current month) |
 | **GET** | `/api/v1/finance/burn-rate` | Retrieve month-to-date burn rate, remaining budget, and daily allowance. | *(None)* |
 | **GET** | `/api/v1/finance/transactions` | List confirmed and draft transactions for the current month. | `?limit=30` |
 | **POST** | `/api/v1/finance/ocr` | Upload and extract structured receipt data from an image file. | Multipart form-data `file=@receipt.jpg` |

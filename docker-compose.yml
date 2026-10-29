@@ -33,6 +33,7 @@ services:
       SPRING_DATASOURCE_USERNAME: ${POSTGRES_USER:-ploa}
       SPRING_DATASOURCE_PASSWORD: ${POSTGRES_PASSWORD:-changeme}
       API_SECRET_KEY: ${API_SECRET_KEY:-changeme-strong-secret}
+      TELEGRAM_ENABLED: ${TELEGRAM_ENABLED:-true}
       TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN}
       TELEGRAM_BOT_USERNAME: ${TELEGRAM_BOT_USERNAME}
       TELEGRAM_ALLOWED_CHAT_IDS: ${TELEGRAM_ALLOWED_CHAT_IDS}
@@ -46,6 +47,17 @@ services:
       - "8080:8080"
     volumes:
       - backend_logs:/app/logs
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: ploa-frontend
+    restart: unless-stopped
+    depends_on:
+      - backend
+    ports:
+      - "3000:80"
 
   garmin-puller:
     build:
