@@ -8,4 +8,8 @@ public record HealthBatchSyncResponse(
         LocalDate startDate,
         LocalDate endDate,
         String message
-) {}
+) {
+    public HealthBatchSyncResponse(String status, int syncedCount, String message) {
+        this(status, syncedCount, null, null, message);
+    }
+}

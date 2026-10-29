@@ -3,7 +3,8 @@ import type {
   FinanceAnalyticsResponse,
   Transaction,
   OcrResult,
-  ReadinessResult
+  ReadinessResult,
+  ActivitySummary
 } from '../types';
 
 const API_BASE = '/api/v1';
@@ -91,6 +92,17 @@ export const api = {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(metrics),
   }),
+  getActivities: (params?: { date?: string; startDate?: string; endDate?: string; limit?: number }) => {
+    let url = '/health/activities';
+    const qs = new URLSearchParams();
+    if (params?.date) qs.set('date', params.date);
+    if (params?.startDate) qs.set('startDate', params.startDate);
+    if (params?.endDate) qs.set('endDate', params.endDate);
+    if (params?.limit) qs.set('limit', params.limit.toString());
+    const query = qs.toString();
+    if (query) url += `?${query}`;
+    return request<ActivitySummary[]>(url);
+  },
 
   // Finance
   getFinanceAnalytics: (month?: string) => request<FinanceAnalyticsResponse>(month ? `/finance/analytics?month=${month}` : '/finance/analytics'),

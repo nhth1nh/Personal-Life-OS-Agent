@@ -5,7 +5,8 @@ import {
   Scale, 
   Flame, 
   RefreshCw,
-  AlertCircle
+  AlertCircle,
+  Zap,
 } from 'lucide-react';
 import { 
   ResponsiveContainer, 
@@ -21,11 +22,12 @@ import {
   ReferenceLine 
 } from 'recharts';
 import { api } from '../api/client';
-import type { HealthTimeseriesResponse } from '../types';
+import type { HealthTimeseriesResponse, ActivitySummary } from '../types';
 
 export const HealthHubView: React.FC = () => {
   const [data, setData] = useState<HealthTimeseriesResponse | null>(null);
   const [days, setDays] = useState<number>(30);
+  const [activities, setActivities] = useState<ActivitySummary[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -37,8 +39,12 @@ export const HealthHubView: React.FC = () => {
     try {
       setLoading(true);
       setError(null);
-      const res = await api.getHealthTimeseries(windowDays);
-      setData(res);
+      const [res, acts] = await Promise.allSettled([
+        api.getHealthTimeseries(windowDays),
+        api.getActivities({ limit: 18 })
+      ]);
+      if (res.status === 'fulfilled') setData(res.value);
+      if (acts.status === 'fulfilled') setActivities(acts.value || []);
     } catch (err: any) {
       setError(err.message || 'Failed to fetch biometric timeseries');
     } finally {
@@ -269,6 +275,118 @@ export const HealthHubView: React.FC = () => {
             </ResponsiveContainer>
           </div>
         </div>
+      </div>
+
+      {/* Workouts & Training Sessions Section */}
+      <div className="bg-slate-900/80 border border-slate-800 rounded-3xl p-6 backdrop-blur-md">
+        <div className="flex items-center justify-between pb-4 border-b border-slate-800">
+          <div className="flex items-center space-x-3">
+            <div className="w-9 h-9 rounded-xl bg-cyan-500/10 border border-cyan-500/20 flex items-center justify-center">
+              <Zap className="w-5 h-5 text-cyan-400" />
+            </div>
+            <div>
+              <h3 className="font-bold text-white text-base">Workouts & Athletic Training Sessions</h3>
+              <p className="text-xs text-slate-400 mt-0.5">Individual athletic sessions synced from Garmin Connect</p>
+            </div>
+          </div>
+          <span className="text-xs bg-slate-800 text-slate-300 px-2.5 py-1 rounded-full font-medium border border-slate-700">
+            {activities.length} session{activities.length !== 1 ? 's' : ''}
+          </span>
+        </div>
+
+        {activities.length === 0 ? (
+          <div className="py-8 text-center text-slate-500 text-xs">
+            No individual workout sessions recorded in this period.
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4 mt-4">
+            {activities.map((act) => {
+              const formatMinutes = (m: number | null) => {
+                if (!m) return '--';
+                const hours = Math.floor(m / 60);
+                const mins = Math.round(m % 60);
+                return hours > 0 ? `${hours}h ${mins}m` : `${mins} min`;
+              };
+
+              const getSportBadge = (type: string) => {
+                const t = type?.toLowerCase() || '';
+                if (t.includes('badminton')) return { label: 'Badminton', icon: '🏸', color: 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30' };
+                if (t.includes('run')) return { label: 'Running', icon: '🏃', color: 'bg-amber-500/10 text-amber-400 border-amber-500/30' };
+                if (t.includes('cycl') || t.includes('bike')) return { label: 'Cycling', icon: '🚴', color: 'bg-cyan-500/10 text-cyan-400 border-cyan-500/30' };
+                if (t.includes('gym') || t.includes('fitness') || t.includes('strength')) return { label: 'Gym / Strength', icon: '🏋️', color: 'bg-indigo-500/10 text-indigo-400 border-indigo-500/30' };
+                if (t.includes('swim')) return { label: 'Swimming', icon: '🏊', color: 'bg-sky-500/10 text-sky-400 border-sky-500/30' };
+                if (t.includes('walk')) return { label: 'Walking', icon: '🚶', color: 'bg-teal-500/10 text-teal-400 border-teal-500/30' };
+                return { label: type || 'Workout', icon: '⚡', color: 'bg-blue-500/10 text-blue-400 border-blue-500/30' };
+              };
+
+              const sport = getSportBadge(act.activityType);
+
+              return (
+                <div key={act.id} className="bg-slate-950/60 border border-slate-800 rounded-2xl p-4 flex flex-col justify-between hover:border-slate-700 transition-all">
+                  <div>
+                    <div className="flex items-center justify-between gap-2 mb-2">
+                      <span className={`text-xs px-2 py-0.5 rounded-lg border font-semibold flex items-center space-x-1 ${sport.color}`}>
+                        <span>{sport.icon}</span>
+                        <span>{sport.label}</span>
+                      </span>
+                      <span className="text-[11px] text-slate-400 font-mono">
+                        {act.date} {act.startTime ? new Date(act.startTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : ''}
+                      </span>
+                    </div>
+
+                    <h4 className="font-semibold text-white text-sm line-clamp-1">{act.name}</h4>
+
+                    <div className="grid grid-cols-2 gap-2 mt-3 text-xs">
+                      <div className="bg-slate-900/60 p-2 rounded-xl border border-slate-800/80">
+                        <span className="text-slate-400 block text-[10px]">Duration</span>
+                        <span className="text-white font-medium">{formatMinutes(act.durationMinutes)}</span>
+                      </div>
+                      <div className="bg-slate-900/60 p-2 rounded-xl border border-slate-800/80">
+                        <span className="text-slate-400 block text-[10px]">Calories</span>
+                        <span className="text-amber-400 font-medium">{act.calories != null ? `${act.calories} kcal` : '--'}</span>
+                      </div>
+                      <div className="bg-slate-900/60 p-2 rounded-xl border border-slate-800/80">
+                        <span className="text-slate-400 block text-[10px]">Avg / Max HR</span>
+                        <span className="text-rose-400 font-medium">
+                          {act.averageHr ? `${act.averageHr}` : '--'}{act.maxHr ? ` / ${act.maxHr} bpm` : ''}
+                        </span>
+                      </div>
+                      <div className="bg-slate-900/60 p-2 rounded-xl border border-slate-800/80">
+                        <span className="text-slate-400 block text-[10px]">Distance / Pace</span>
+                        <span className="text-cyan-400 font-medium">
+                          {act.distanceKm ? `${act.distanceKm} km` : (act.avgPaceMinPerKm ? `${act.avgPaceMinPerKm} m/km` : '--')}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {(act.aerobicTrainingEffect != null || act.anaerobicTrainingEffect != null || act.trainingEffectLabel) && (
+                    <div className="mt-3 pt-2.5 border-t border-slate-800/60 flex items-center justify-between text-[11px]">
+                      <span className="text-slate-400">Training Effect</span>
+                      <div className="flex items-center space-x-1.5 font-medium">
+                        {act.aerobicTrainingEffect != null && (
+                          <span className="px-1.5 py-0.5 rounded bg-blue-500/10 text-blue-400 border border-blue-500/20">
+                            {act.aerobicTrainingEffect.toFixed(1)} Aero
+                          </span>
+                        )}
+                        {act.anaerobicTrainingEffect != null && (
+                          <span className="px-1.5 py-0.5 rounded bg-purple-500/10 text-purple-400 border border-purple-500/20">
+                            {act.anaerobicTrainingEffect.toFixed(1)} Anaero
+                          </span>
+                        )}
+                        {act.trainingEffectLabel && (
+                          <span className="text-[10px] text-slate-400 uppercase font-mono">
+                            {act.trainingEffectLabel}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )}
       </div>
     </div>
   );

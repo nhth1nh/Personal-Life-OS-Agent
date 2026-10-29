@@ -9,13 +9,16 @@ import com.ploa.finance.service.FinanceService;
 import com.ploa.health.engine.dto.ReadinessResult;
 import com.ploa.health.engine.dto.SleepResult;
 import com.ploa.health.engine.dto.WeightEmaResult;
+import com.ploa.health.api.dto.ActivitySummaryResponse;
 import com.ploa.health.model.HealthMetric;
+import com.ploa.health.service.ActivityService;
 import com.ploa.health.service.HealthService;
 import com.ploa.profile.UserProfileService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.ai.tool.annotation.Tool;
 import org.springframework.ai.tool.annotation.ToolParam;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
 import java.time.LocalDate;
@@ -31,15 +34,19 @@ public class AssistantTools {
     private static final Logger log = LoggerFactory.getLogger(AssistantTools.class);
 
     private final HealthService healthService;
+    private final ActivityService activityService;
     private final FinanceService financeService;
     private final MemoryService memoryService;
     private final UserProfileService profileService;
 
+    @Autowired
     public AssistantTools(HealthService healthService,
+                          ActivityService activityService,
                           FinanceService financeService,
                           MemoryService memoryService,
                           UserProfileService profileService) {
         this.healthService = healthService;
+        this.activityService = activityService;
         this.financeService = financeService;
         this.memoryService = memoryService;
         this.profileService = profileService;
@@ -108,6 +115,20 @@ public class AssistantTools {
                 m.getSpo2Avg(),
                 m.getRespirationAvg()
         );
+    }
+
+    @Tool(description = "Get detailed athletic workouts and sports activities recorded on Garmin (e.g. running, badminton, cycling, gym, swimming) for a specific date or recent period. Includes duration, calories burned, average/max HR, aerobic & anaerobic training effect, pace, speed, and training load.")
+    public List<ActivitySummaryResponse> getWorkouts(
+            @ToolParam(description = "Target date: 'today', 'yesterday', or 'YYYY-MM-DD'. Leave empty or 'recent' for recent workouts.", required = false) String date,
+            @ToolParam(description = "Limit of recent workouts to retrieve if date is omitted (default 10).", required = false) Integer limit) {
+        if (date != null && !date.isBlank() && !date.equalsIgnoreCase("recent") && !date.equalsIgnoreCase("recently") && !date.equalsIgnoreCase("all")) {
+            LocalDate target = parseDate(date);
+            log.info("Assistant tool call: getWorkouts(date={})", target);
+            return activityService.getActivitiesForDate(target);
+        }
+        int l = (limit != null && limit > 0) ? limit : 10;
+        log.info("Assistant tool call: getWorkouts(limit={})", l);
+        return activityService.getRecentActivities(l);
     }
 
     @Tool(description = "Trigger an immediate live synchronization with Garmin Connect to pull up-to-the-second biometrics from the user's Garmin watch (steps, active calories, Body Battery, stress, heart rate). Call this ONLY when the user explicitly asks to sync, refresh, or update data from their Garmin watch/tracker.")

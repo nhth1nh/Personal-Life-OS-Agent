@@ -195,6 +195,7 @@ public class AssistantService {
                 %sAVAILABLE TOOLS:
                 - "recordExpense": Log a new financial expense or payment into the user's ledger. Call this whenever the user reports spending money, buying goods/services, or paying a bill in any language (e.g. '50k coffee', 'spent 15 EUR on lunch', 'paid 200k electricity'). Do NOT call for general talk about dates or questions about money.
                 - "syncGarminData": Trigger live sync with Garmin Connect. Call ONLY when user explicitly asks to sync or refresh watch data.
+                - "getWorkouts": Athletic workouts and sports activities (sport type, duration, calories burned, avg/max HR, aerobic/anaerobic training effect, training load, speed, pace). Call when user asks about workouts, exercises, runs, badminton, gym sessions, training load, or physical sports.
                 - "getDailyHealth": Physical biometrics (steps, distance, kcal, active time, body battery, stress, heart rate).
                 - "getHealthReadiness": Recovery readiness, overnight HRV, 30-day baseline Z-scores, recovery level.
                 - "getSleepAnalysis": Sleep duration, deep/light/REM stages, sleep debt.
@@ -210,7 +211,7 @@ public class AssistantService {
                 1. TEMPORAL GROUNDING: Evaluate relative dates ("today", "yesterday", "last night") against CURRENT TEMPORAL CONTEXT.
                 2. "saveUserMemory": Trigger ONLY when user explicitly commands to remember an enduring fact or sets permanent profile context (e.g. name, permanent diet/allergy).
                 3. ZERO-TOOL DEFAULT ({"tools": []}): Return {"tools": []} for greetings, acknowledgments, casual conversation, advice, or questions not needing user database records.
-                4. DATE RESOLUTION: If the user asks about past physical activity ("yesterday", "last night"), set date="yesterday". Otherwise set date="today" or "YYYY-MM-DD".
+                4. DATE RESOLUTION: If the user asks about past physical activity ("yesterday", "last night"), set date="yesterday". If the user asks about recent workouts or exercises generally without specifying a single day, set date="recent" to retrieve recent sessions across multiple days.
 
                 OUTPUT FORMAT: Strict JSON only:
                 - If tools needed:
@@ -340,6 +341,13 @@ public class AssistantService {
                         }
                     }
                     case "syncGarminData" -> data.put("live_garmin_sync", assistantTools.syncGarminData());
+                    case "getWorkouts" -> {
+                        if (targetDate == null || targetDate.isBlank() || targetDate.equalsIgnoreCase("recent") || targetDate.equalsIgnoreCase("recently") || targetDate.equalsIgnoreCase("all")) {
+                            data.put("recent_workouts", assistantTools.getWorkouts(null, 10));
+                        } else {
+                            data.put("workouts_" + targetDate, assistantTools.getWorkouts(targetDate, 10));
+                        }
+                    }
                     case "getDailyHealth" -> data.put("daily_health_" + targetDate, assistantTools.getDailyHealth(targetDate));
                     case "getHealthReadiness" -> data.put("readiness_" + targetDate, assistantTools.getHealthReadiness(targetDate));
                     case "getSleepAnalysis" -> data.put("sleep_analysis", assistantTools.getSleepAnalysis());
@@ -471,6 +479,9 @@ public class AssistantService {
                 || t.contains("activity") || t.contains("battery") || t.contains("stress") || t.contains("heart")) {
             tools.add("getDailyHealth");
         }
+        if (t.contains("workout") || t.contains("exercise") || t.contains("tập") || t.contains("run") || t.contains("chạy") || t.contains("badminton") || t.contains("cầu lông") || t.contains("gym") || t.contains("sport") || t.contains("training")) {
+            tools.add("getWorkouts");
+        }
         if (t.contains("sleep")) {
             tools.add("getSleepAnalysis");
         }
@@ -522,6 +533,7 @@ public class AssistantService {
     private boolean hasDataOrMemoryKeywords(String clean) {
         String[] keywords = {
                 "sync", "watch", "garmin", "step", "run", "walk", "calorie", "kcal",
+                "workout", "badminton", "gym", "sport", "exercise", "training",
                 "heart", "hrv", "battery", "stress", "sleep", "nap", "readiness", "recovery",
                 "weight", "kg", "scale", "lbs",
                 "money", "spend", "spent", "budget", "burn", "expense", "cost",

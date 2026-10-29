@@ -9,10 +9,11 @@ import {
   RefreshCw,
   ArrowRight,
   ShieldAlert,
-  ShieldCheck
+  ShieldCheck,
+  Zap
 } from 'lucide-react';
 import { api } from '../api/client';
-import type { ReadinessResult, FinanceAnalyticsResponse } from '../types';
+import type { ReadinessResult, FinanceAnalyticsResponse, ActivitySummary } from '../types';
 
 interface DashboardViewProps {
   onNavigate: (tab: string) => void;
@@ -22,6 +23,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate }) => {
   const [readiness, setReadiness] = useState<ReadinessResult | null>(null);
   const [todayBio, setTodayBio] = useState<any>(null);
   const [finance, setFinance] = useState<FinanceAnalyticsResponse | null>(null);
+  const [recentWorkout, setRecentWorkout] = useState<ActivitySummary | null>(null);
   const [briefing, setBriefing] = useState<string>('');
   const [briefingType, setBriefingType] = useState<'morning' | 'evening'>('morning');
   const [loadingBriefing, setLoadingBriefing] = useState<boolean>(false);
@@ -34,15 +36,19 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate }) => {
   const loadDashboardData = async () => {
     try {
       setLoading(true);
-      const [r, bio, fin] = await Promise.allSettled([
+      const [r, bio, fin, acts] = await Promise.allSettled([
         api.getReadiness(),
         api.getTodayBiometrics(),
         api.getFinanceAnalytics(),
+        api.getActivities({ limit: 1 }),
       ]);
 
       if (r.status === 'fulfilled') setReadiness(r.value);
       if (bio.status === 'fulfilled') setTodayBio(bio.value);
       if (fin.status === 'fulfilled') setFinance(fin.value);
+      if (acts.status === 'fulfilled' && acts.value && acts.value.length > 0) {
+        setRecentWorkout(acts.value[0]);
+      }
 
       await loadBriefing('morning');
     } catch (err) {
@@ -189,6 +195,48 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate }) => {
           </div>
         </div>
       </div>
+
+      {/* Recent Workout Quick Highlight */}
+      {recentWorkout && (
+        <div 
+          onClick={() => onNavigate('health')}
+          className="bg-slate-900/60 hover:bg-slate-900/90 border border-slate-800 hover:border-slate-700 rounded-2xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 cursor-pointer transition-all backdrop-blur-md"
+        >
+          <div className="flex items-center space-x-3">
+            <div className="w-9 h-9 rounded-xl bg-cyan-500/10 border border-cyan-500/20 flex items-center justify-center flex-shrink-0">
+              <Zap className="w-5 h-5 text-cyan-400" />
+            </div>
+            <div>
+              <div className="flex items-center space-x-2">
+                <span className="text-xs font-semibold text-white">{recentWorkout.name}</span>
+                <span className="text-[10px] px-2 py-0.5 rounded-full bg-cyan-500/10 text-cyan-400 border border-cyan-500/20 capitalize font-medium">
+                  {recentWorkout.activityType}
+                </span>
+                <span className="text-[11px] text-slate-400 font-mono">{recentWorkout.date}</span>
+              </div>
+              <div className="flex items-center space-x-4 mt-1 text-xs text-slate-400">
+                {recentWorkout.durationMinutes && (
+                  <span>⏱️ <strong>{Math.round(recentWorkout.durationMinutes)} min</strong></span>
+                )}
+                {recentWorkout.calories && (
+                  <span>🔥 <strong>{recentWorkout.calories} kcal</strong></span>
+                )}
+                {recentWorkout.averageHr && (
+                  <span>❤️ <strong>{recentWorkout.averageHr} bpm avg</strong></span>
+                )}
+                {recentWorkout.aerobicTrainingEffect && (
+                  <span>⚡ <strong>{recentWorkout.aerobicTrainingEffect.toFixed(1)} Aero TE</strong></span>
+                )}
+              </div>
+            </div>
+          </div>
+
+          <div className="flex items-center space-x-1 text-xs text-cyan-400 font-medium">
+            <span>View Health Hub</span>
+            <ArrowRight className="w-3.5 h-3.5" />
+          </div>
+        </div>
+      )}
 
       {/* Executive Daily Briefing (AI Synthesis) */}
       <div className="bg-slate-900/80 border border-slate-800 rounded-3xl p-6 lg:p-8 backdrop-blur-lg shadow-xl relative">

@@ -43,6 +43,10 @@ GARMIN_EMAIL = os.environ["GARMIN_EMAIL"]
 GARMIN_PASSWORD = os.environ["GARMIN_PASSWORD"]
 GARMIN_PULL_TIME = os.environ.get("GARMIN_PULL_TIME", "06:30")
 BACKEND_URL = os.environ.get("BACKEND_HEALTH_SYNC_URL", "http://backend:8080/api/v1/health/sync")
+ACTIVITIES_BACKEND_URL = os.environ.get(
+    "BACKEND_ACTIVITIES_SYNC_URL",
+    BACKEND_URL.replace("/health/sync", "/health/activities/sync/batch")
+)
 API_SECRET_KEY = os.environ.get("API_SECRET_KEY", "")
 TOKEN_STORE = os.environ.get("GARMIN_TOKENSTORE", "/root/.garminconnect")
 
@@ -183,6 +187,91 @@ def pull_and_sync(target_date: date | None = None) -> bool:
             log.info(f"Weight: {payload.get('weightKg')} kg")
     except Exception as e:
         log.warning(f"Failed to fetch body composition: {e}")
+
+    # ── Activities & Workouts ────────────────────────────────────────────────
+    try:
+        activities_list = client.get_activities_by_date(date_str, date_str)
+        if activities_list and isinstance(activities_list, list):
+            log.info(f"Retrieved {len(activities_list)} Garmin activities for {date_str}")
+            activities_payload = []
+            for act in activities_list:
+                act_id = str(act.get("activityId")) if act.get("activityId") else None
+                if not act_id:
+                    continue
+
+                start_time_str = act.get("startTimeLocal") or act.get("startTimeGmt")
+                start_iso = None
+                if start_time_str:
+                    try:
+                        if "T" in str(start_time_str):
+                            start_iso = str(start_time_str)
+                        else:
+                            start_iso = datetime.strptime(str(start_time_str), "%Y-%m-%d %H:%M:%S").strftime("%Y-%m-%dT%H:%M:%S+07:00")
+                    except Exception:
+                        start_iso = datetime.now().astimezone().isoformat()
+                else:
+                    start_iso = f"{date_str}T00:00:00+07:00"
+
+                type_info = act.get("activityType", {})
+                type_key = type_info.get("typeKey") if isinstance(type_info, dict) else str(type_info)
+
+                hr_zones = {}
+                for z in range(1, 6):
+                    z_val = act.get(f"hrTimeInZone_{z}")
+                    if z_val is not None:
+                        hr_zones[f"zone{z}"] = z_val
+
+                act_req = {
+                    "activityId": act_id,
+                    "name": act.get("activityName") or "Workout",
+                    "activityType": type_key or "other",
+                    "startTime": start_iso,
+                    "date": date_str,
+                    "durationSeconds": float(act["duration"]) if act.get("duration") is not None else None,
+                    "movingDurationSeconds": float(act["movingDuration"]) if act.get("movingDuration") is not None else (float(act["elapsedDuration"]) if act.get("elapsedDuration") is not None else None),
+                    "distanceMeters": float(act["distance"]) if act.get("distance") is not None else None,
+                    "calories": int(act["calories"]) if act.get("calories") is not None else None,
+                    "averageHr": int(act["averageHR"]) if act.get("averageHR") is not None else None,
+                    "maxHr": int(act["maxHR"]) if act.get("maxHR") is not None else None,
+                    "aerobicTrainingEffect": float(act["aerobicTrainingEffect"]) if act.get("aerobicTrainingEffect") is not None else None,
+                    "anaerobicTrainingEffect": float(act["anaerobicTrainingEffect"]) if act.get("anaerobicTrainingEffect") is not None else None,
+                    "trainingEffectLabel": act.get("trainingEffectLabel"),
+                    "trainingLoad": float(act["activityTrainingLoad"]) if act.get("activityTrainingLoad") is not None else None,
+                    "averageSpeed": float(act["averageSpeed"]) if act.get("averageSpeed") is not None else None,
+                    "maxSpeed": float(act["maxSpeed"]) if act.get("maxSpeed") is not None else None,
+                    "elevationGainMeters": float(act["elevationGain"]) if act.get("elevationGain") is not None else None,
+                    "elevationLossMeters": float(act["elevationLoss"]) if act.get("elevationLoss") is not None else None,
+                    "steps": int(act["steps"]) if act.get("steps") is not None else None,
+                    "moderateMinutes": int(act["moderateIntensityMinutes"]) if act.get("moderateIntensityMinutes") is not None else None,
+                    "vigorousMinutes": int(act["vigorousIntensityMinutes"]) if act.get("vigorousIntensityMinutes") is not None else None,
+                    "differenceBodyBattery": int(act["differenceBodyBattery"]) if act.get("differenceBodyBattery") is not None else None,
+                    "hrZonesJsonb": hr_zones if hr_zones else None,
+                    "splitsJsonb": act.get("splitSummaries"),
+                    "rawDataJsonb": {
+                        "activityId": act.get("activityId"),
+                        "activityType": act.get("activityType"),
+                        "eventTypeDTO": act.get("eventTypeDTO"),
+                        "summarizedDiveInfo": act.get("summarizedDiveInfo"),
+                        "purposeful": act.get("purposeful")
+                    }
+                }
+                activities_payload.append(act_req)
+
+            if activities_payload:
+                log.info(f"Posting {len(activities_payload)} activities for {date_str} to {ACTIVITIES_BACKEND_URL}")
+                try:
+                    act_resp = requests.post(
+                        ACTIVITIES_BACKEND_URL,
+                        json=activities_payload,
+                        headers={"X-API-Key": API_SECRET_KEY.strip(), "Content-Type": "application/json"},
+                        timeout=30,
+                    )
+                    act_resp.raise_for_status()
+                    log.info(f"Activities sync successful for {date_str}: {act_resp.status_code}")
+                except Exception as act_err:
+                    log.error(f"Failed to post activities to backend: {act_err}")
+    except Exception as e:
+        log.warning(f"Failed to fetch activities from Garmin for {date_str}: {e}")
 
     # Attach raw data JSON for extensive LLM exploration
     if raw_data:

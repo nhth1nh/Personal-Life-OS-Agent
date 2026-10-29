@@ -11,8 +11,10 @@ import com.ploa.finance.service.FinanceService;
 import com.ploa.health.engine.dto.ReadinessResult;
 import com.ploa.health.engine.dto.WeightEmaResult;
 import com.ploa.health.model.HealthMetric;
+import com.ploa.health.service.ActivityService;
 import com.ploa.health.service.HealthService;
 import com.ploa.profile.UserProfileService;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.ai.chat.client.ChatClient;
@@ -46,7 +48,7 @@ public class BriefingOrchestrator {
             Your job: write a concise, motivating morning briefing (max 200 words) in English.
             
             Structure:
-            1. 🏃 Recovery: Interpret readiness level and recommend today's exercise intensity.
+            1. 🏃 Recovery: Interpret readiness level, factor in yesterday's workout strain if any, and recommend today's exercise intensity.
             2. 💤 Sleep: Comment on last night's sleep and any debt.
             3. ⚖️ Weight: Brief comment on EMA trend vs target.
             4. 💰 Finance: Comment on spending pace vs budget.
@@ -64,7 +66,7 @@ public class BriefingOrchestrator {
             Write a concise, reflective, and motivating Evening Summary (max 250 words) in English.
             
             Structure:
-            1. 🏁 Daily Activity & Strain: Steps completed, distance (km), active calories burned vs total calories, active/intensity minutes.
+            1. 🏁 Daily Activity & Workouts: Specific athletic workouts completed today (sport, duration, calories, training effect), steps completed, distance (km), active calories burned vs total calories, active/intensity minutes.
             2. 🔋 Energy & Stress Dynamics: Body Battery ending level, highest/lowest, charged vs drained, average stress, max peak, and stress qualifier.
             3. 💰 Daily Financial Recap: Total spent today, breakdown of today's purchases/merchants, remaining monthly budget, and safe daily allowance for tomorrow.
             4. 🌙 Wind-down & Nightly Target: Actionable recovery recommendations for tonight (recommended sleep duration, winding down, sleep debt payoff).
@@ -75,6 +77,7 @@ public class BriefingOrchestrator {
             """;
 
     private final HealthService healthService;
+    private final ActivityService activityService;
     private final FinanceService financeService;
     private final MemoryService memoryService;
     private final UserProfileService profileService;
@@ -83,7 +86,9 @@ public class BriefingOrchestrator {
     private final PloaProperties properties;
     private TelegramClient telegramClient;
 
+    @Autowired
     public BriefingOrchestrator(HealthService healthService,
+                                ActivityService activityService,
                                 FinanceService financeService,
                                 MemoryService memoryService,
                                 UserProfileService profileService,
@@ -91,6 +96,7 @@ public class BriefingOrchestrator {
                                 ChatClient.Builder chatClientBuilder,
                                 PloaProperties properties) {
         this.healthService = healthService;
+        this.activityService = activityService;
         this.financeService = financeService;
         this.memoryService = memoryService;
         this.profileService = profileService;
@@ -187,6 +193,7 @@ public class BriefingOrchestrator {
         var r = ctx.readiness();
         var w = ctx.weightEma();
         var f = ctx.burnRate();
+        String yesterdayWorkouts = activityService.getWorkoutSummaryText(ctx.date().minusDays(1));
 
         return """
                 %s
@@ -200,6 +207,7 @@ public class BriefingOrchestrator {
                 Sleep last night: %s min total (%s min deep, %s min REM)
                 7-day sleep debt: %s min vs target of %.0f min/night
                 Restorative ratio (Deep+REM/Total): %s%%
+                Yesterday's workouts: %s
                 
                 --- BODY COMPOSITION ---
                 Latest weight: %s kg
@@ -231,6 +239,7 @@ public class BriefingOrchestrator {
                 r != null ? r.sleepDebtMin() : "N/A",
                 profileService.getSleepTargetHours() * 60,
                 fmt2(r != null ? r.restorativeRatioPct() : null),
+                yesterdayWorkouts,
                 w != null ? w.latestWeightKg() : "N/A",
                 w != null ? w.ema7Kg() : "N/A",
                 w != null && w.targetWeightKg() != null ? w.targetWeightKg() : profileService.getTargetWeightKg(),
@@ -290,6 +299,7 @@ public class BriefingOrchestrator {
                 %s
                 
                 --- PHYSICAL ACTIVITY & STRAIN TODAY ---
+                Workouts & Sessions: %s
                 Steps completed: %s
                 Distance: %s km
                 Active Calories: %s kcal  |  Total Calories: %s kcal
@@ -320,6 +330,7 @@ public class BriefingOrchestrator {
                 temporalContext.getFormattedPromptContext(),
                 today,
                 prof.toString(),
+                activityService.getWorkoutSummaryText(today),
                 h != null && h.getSteps() != null ? String.format("%,d", h.getSteps()) : "N/A",
                 h != null && h.getDistanceMeters() != null ? String.format("%.2f", h.getDistanceMeters() / 1000.0) : "N/A",
                 h != null && h.getActiveKcal() != null ? h.getActiveKcal() : "N/A",

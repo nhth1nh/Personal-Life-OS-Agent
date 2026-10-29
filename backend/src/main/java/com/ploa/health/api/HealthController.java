@@ -23,8 +23,13 @@ import com.ploa.health.api.dto.SyncRangeRequest;
 import com.ploa.health.api.dto.SyncRangeResponse;
 import com.ploa.health.engine.dto.ReadinessResult;
 import com.ploa.health.engine.dto.SleepResult;
+import com.ploa.health.api.dto.ActivitySummaryResponse;
+import com.ploa.health.api.dto.ActivitySyncRequest;
 import com.ploa.health.engine.dto.WeightEmaResult;
+import com.ploa.health.service.ActivityService;
 import com.ploa.health.service.HealthService;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.web.bind.annotation.PathVariable;
 
 import jakarta.validation.Valid;
 
@@ -34,9 +39,12 @@ public class HealthController {
 
     private static final Logger log = LoggerFactory.getLogger(HealthController.class);
     private final HealthService healthService;
+    private final ActivityService activityService;
 
-    public HealthController(HealthService healthService) {
+    @Autowired
+    public HealthController(HealthService healthService, ActivityService activityService) {
         this.healthService = healthService;
+        this.activityService = activityService;
     }
 
     /**
@@ -157,5 +165,54 @@ public class HealthController {
         } else {
             return ResponseEntity.status(502).body(res);
         }
+    }
+
+    // ── Activities & Workouts Endpoints ─────────────────────────────────────
+
+    /**
+     * Idempotent sync of a single athletic activity / workout.
+     */
+    @PostMapping("/activities/sync")
+    public ResponseEntity<ActivitySummaryResponse> syncActivity(@Valid @RequestBody ActivitySyncRequest request) {
+        log.info("Activity sync received: {} (ID: {})", request.name(), request.activityId());
+        return ResponseEntity.ok(ActivitySummaryResponse.fromEntity(activityService.upsert(request)));
+    }
+
+    /**
+     * Batch sync of athletic activities / workouts.
+     */
+    @PostMapping("/activities/sync/batch")
+    public ResponseEntity<HealthBatchSyncResponse> syncActivitiesBatch(@Valid @RequestBody List<ActivitySyncRequest> requests) {
+        log.info("Batch activity sync received with {} entries", requests != null ? requests.size() : 0);
+        int synced = activityService.upsertBatch(requests);
+        return ResponseEntity.ok(new HealthBatchSyncResponse("success", synced, "Successfully synced " + synced + " activities"));
+    }
+
+    /**
+     * Retrieve workouts with optional filtering by single date, date range, or recent limit.
+     */
+    @GetMapping("/activities")
+    public ResponseEntity<List<ActivitySummaryResponse>> getActivities(
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate date,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate startDate,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate,
+            @RequestParam(required = false, defaultValue = "30") Integer limit) {
+        if (date != null) {
+            return ResponseEntity.ok(activityService.getActivitiesForDate(date));
+        }
+        if (startDate != null && endDate != null) {
+            return ResponseEntity.ok(activityService.getActivitiesBetween(startDate, endDate));
+        }
+        return ResponseEntity.ok(activityService.getRecentActivities(limit != null ? limit : 30));
+    }
+
+    /**
+     * Retrieve single workout by Garmin activity ID.
+     */
+    @GetMapping("/activities/{id}")
+    public ResponseEntity<ActivitySummaryResponse> getActivityById(@PathVariable String id) {
+        return activityService.getActivityById(id)
+                .map(ResponseEntity::ok)
+                .orElse(ResponseEntity.notFound().build());
     }
 }

@@ -37,6 +37,32 @@ export interface HealthTimeseriesResponse {
   points: HealthDailyPoint[];
 }
 
+export interface ActivitySummary {
+  id: string;
+  name: string;
+  activityType: string;
+  startTime: string;
+  date: string;
+  durationMinutes: number | null;
+  distanceKm: number | null;
+  calories: number | null;
+  averageHr: number | null;
+  maxHr: number | null;
+  aerobicTrainingEffect: number | null;
+  anaerobicTrainingEffect: number | null;
+  trainingEffectLabel: string | null;
+  trainingLoad: number | null;
+  avgPaceMinPerKm: number | null;
+  avgSpeedKmh: number | null;
+  elevationGainMeters: number | null;
+  steps: number | null;
+  moderateMinutes: number | null;
+  vigorousMinutes: number | null;
+  differenceBodyBattery: number | null;
+  hrZonesJsonb?: Record<string, number> | null;
+  splitsJsonb?: any;
+}
+
 export interface CategorySpend {
   category: string;
   totalVnd: number;
