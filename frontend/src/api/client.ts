@@ -4,7 +4,12 @@ import type {
   Transaction,
   OcrResult,
   ReadinessResult,
-  ActivitySummary
+  ActivitySummary,
+  CashFlowSummary,
+  Debt,
+  DebtSchedule,
+  Income,
+  PayoffSimulationComparison
 } from '../types';
 
 const API_BASE = '/api/v1';
@@ -104,11 +109,94 @@ export const api = {
     return request<ActivitySummary[]>(url);
   },
 
-  // Finance
+  // Finance Analytics & Cash Flow
   getFinanceAnalytics: (month?: string) => request<FinanceAnalyticsResponse>(month ? `/finance/analytics?month=${month}` : '/finance/analytics'),
+  getCashFlow: () => request<CashFlowSummary>('/finance/cashflow'),
   getRecentTransactions: (limit = 30) => request<Transaction[]>(`/finance/transactions?limit=${limit}`),
+  createDirectTransaction: (data: {
+    amount: number;
+    category?: string;
+    spendType?: 'DISCRETIONARY' | 'FIXED';
+    transactionType?: string;
+    merchant?: string;
+    txDate?: string;
+    note?: string;
+  }) => request<Transaction>('/finance/transactions', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data),
+  }),
   confirmTransaction: (id: string) => request<Transaction>(`/finance/transactions/${id}/confirm`, { method: 'POST' }),
   deleteTransaction: (id: string) => request<void>(`/finance/transactions/${id}`, { method: 'DELETE' }),
+
+  // Incomes
+  getIncomes: (params?: { from?: string; to?: string; status?: string }) => {
+    const qs = new URLSearchParams();
+    if (params?.from) qs.set('from', params.from);
+    if (params?.to) qs.set('to', params.to);
+    if (params?.status) qs.set('status', params.status);
+    const query = qs.toString();
+    return request<Income[]>(`/finance/incomes${query ? `?${query}` : ''}`);
+  },
+  createIncome: (data: {
+    source: string;
+    expectedAmount: number;
+    actualAmount?: number;
+    expectedDate?: string;
+    incomeType?: string;
+    confidenceFactor?: number;
+    isRecurring?: boolean;
+    frequency?: string;
+    notes?: string;
+  }) => request<Income>('/finance/incomes', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data),
+  }),
+  markIncomeReceived: (id: string, data: { actualAmount?: number; receivedDate?: string; accountId?: string }) =>
+    request<Income>(`/finance/incomes/${id}/receive`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+    }),
+  deleteIncome: (id: string) => request<void>(`/finance/incomes/${id}`, { method: 'DELETE' }),
+
+  // Debts & Simulations
+  getDebts: () => request<Debt[]>('/finance/debts'),
+  getDebtById: (id: string) => request<Debt>(`/finance/debts/${id}`),
+  createDebt: (data: {
+    name: string;
+    creditor: string;
+    debtType?: string;
+    originalPrincipal: number;
+    currentPrincipal?: number;
+    interestRateApr?: number;
+    interestAccrualConvention?: string;
+    monthlyMinimumDue?: number;
+    dueDayOfMonth?: number;
+    originationDate?: string;
+    maturityDate?: string;
+    notes?: string;
+  }) => request<Debt>('/finance/debts', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data),
+  }),
+  getDebtSchedule: (debtId: string) => request<DebtSchedule[]>(`/finance/debts/${debtId}/schedule`),
+  recordDebtPayment: (debtId: string, data: {
+    totalPaid: number;
+    principalPortion?: number;
+    interestPortion?: number;
+    feePortion?: number;
+    paymentDate?: string;
+    note?: string;
+  }) => request<any>(`/finance/debts/${debtId}/payments`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data),
+  }),
+  simulateDebtPayoff: (surplus = 0) =>
+    request<PayoffSimulationComparison>(`/finance/debts/simulate?surplus=${surplus}`),
 
   // OCR
   uploadReceipt: async (file: File): Promise<OcrResult> => {

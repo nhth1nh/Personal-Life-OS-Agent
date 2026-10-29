@@ -1,5 +1,6 @@
 package com.ploa.finance.model;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import jakarta.persistence.*;
 import java.math.BigDecimal;
 import java.time.LocalDate;
@@ -14,6 +15,7 @@ public class DebtSchedule {
     @GeneratedValue(strategy = GenerationType.UUID)
     private UUID id;
 
+    @JsonIgnore
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "debt_id", nullable = false)
     private Debt debt;
@@ -54,6 +56,7 @@ public class DebtSchedule {
 
     public Debt getDebt() { return debt; }
     public void setDebt(Debt debt) { this.debt = debt; }
+    public UUID getDebtId() { return debt != null ? debt.getId() : null; }
 
     public int getInstallmentNumber() { return installmentNumber; }
     public void setInstallmentNumber(int installmentNumber) { this.installmentNumber = installmentNumber; }

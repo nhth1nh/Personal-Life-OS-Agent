@@ -28,12 +28,14 @@ public class UserProfileService {
     public static final String KEY_SLEEP_TARGET = "sleep_target_hours";
     public static final String KEY_BASELINE_DAYS = "baseline_window_days";
     public static final String KEY_MONTHLY_BUDGET = "monthly_budget_vnd";
+    public static final String KEY_EMERGENCY_RESERVE_FLOOR = "emergency_reserve_floor_vnd";
     public static final String KEY_USER_NAME = "name";
 
     public static final double DEFAULT_TARGET_WEIGHT_KG = 68.0;
     public static final double DEFAULT_SLEEP_TARGET_HOURS = 7.5;
     public static final int DEFAULT_BASELINE_WINDOW_DAYS = 30;
     public static final long DEFAULT_MONTHLY_BUDGET_VND = 10_000_000L;
+    public static final long DEFAULT_EMERGENCY_RESERVE_FLOOR_VND = 0L;
 
     private final UserMemoryRepository memoryRepo;
 
@@ -46,18 +48,29 @@ public class UserProfileService {
             double sleepTargetHours,
             int baselineWindowDays,
             long monthlyBudgetVnd,
+            long emergencyReserveFloorVnd,
             String userName
-    ) {}
+    ) {
+        public UserProfileData(double targetWeightKg, double sleepTargetHours, int baselineWindowDays, long monthlyBudgetVnd, String userName) {
+            this(targetWeightKg, sleepTargetHours, baselineWindowDays, monthlyBudgetVnd, DEFAULT_EMERGENCY_RESERVE_FLOOR_VND, userName);
+        }
+    }
 
     public record ParsedProfileUpdate(
             Long monthlyBudgetVnd,
+            Long emergencyReserveFloorVnd,
             Double targetWeightKg,
             Double sleepTargetHours,
             Integer baselineWindowDays,
             String userName
     ) {
+        public ParsedProfileUpdate(Long monthlyBudgetVnd, Double targetWeightKg, Double sleepTargetHours, Integer baselineWindowDays, String userName) {
+            this(monthlyBudgetVnd, null, targetWeightKg, sleepTargetHours, baselineWindowDays, userName);
+        }
+
         public boolean hasAny() {
             return monthlyBudgetVnd != null
+                    || emergencyReserveFloorVnd != null
                     || targetWeightKg != null
                     || sleepTargetHours != null
                     || baselineWindowDays != null
@@ -72,6 +85,7 @@ public class UserProfileService {
                 getSleepTargetHours(),
                 getBaselineWindowDays(),
                 getMonthlyBudgetVnd(),
+                getEmergencyReserveFloorVnd(),
                 getUserName().orElse(null)
         );
     }
@@ -94,6 +108,11 @@ public class UserProfileService {
     @Transactional(readOnly = true)
     public long getMonthlyBudgetVnd() {
         return getLongPreference(CAT_FINANCE, KEY_MONTHLY_BUDGET, DEFAULT_MONTHLY_BUDGET_VND);
+    }
+
+    @Transactional(readOnly = true)
+    public long getEmergencyReserveFloorVnd() {
+        return getLongPreference(CAT_FINANCE, KEY_EMERGENCY_RESERVE_FLOOR, DEFAULT_EMERGENCY_RESERVE_FLOOR_VND);
     }
 
     @Transactional(readOnly = true)
@@ -123,6 +142,11 @@ public class UserProfileService {
     }
 
     @Transactional
+    public void setEmergencyReserveFloorVnd(long amountVnd, String source) {
+        saveOrUpdate(CAT_FINANCE, KEY_EMERGENCY_RESERVE_FLOOR, String.valueOf(amountVnd), source);
+    }
+
+    @Transactional
     public void setUserName(String name, String source) {
         saveOrUpdate(CAT_PROFILE, KEY_USER_NAME, name, source);
     }
@@ -131,6 +155,9 @@ public class UserProfileService {
     public UserProfileData applyUpdate(ParsedProfileUpdate update, String source) {
         if (update.monthlyBudgetVnd() != null) {
             setMonthlyBudgetVnd(update.monthlyBudgetVnd(), source);
+        }
+        if (update.emergencyReserveFloorVnd() != null) {
+            setEmergencyReserveFloorVnd(update.emergencyReserveFloorVnd(), source);
         }
         if (update.targetWeightKg() != null) {
             setTargetWeightKg(update.targetWeightKg(), source);
@@ -170,17 +197,14 @@ public class UserProfileService {
 
     /**
      * Parses free-form arguments from Telegram /init command or chat updates.
-     * Examples:
-     *   "budget 15M weight 65kg sleep 8h"
-     *   "budget=12000000, weight=68, sleep=7.5"
-     *   "15M 65kg 8h"
      */
     public ParsedProfileUpdate parseArgs(String rawText) {
         if (rawText == null || rawText.isBlank()) {
-            return new ParsedProfileUpdate(null, null, null, null, null);
+            return new ParsedProfileUpdate(null, null, null, null, null, null);
         }
 
         Long budget = null;
+        Long reserve = null;
         Double weight = null;
         Double sleep = null;
         Integer baseline = null;
@@ -192,6 +216,11 @@ public class UserProfileService {
         Matcher mBudget = Pattern.compile("(?i)(?:budget|ngân\\s*sách|ngansach|tien)\\s*[:=]?\\s*([0-9.,]+(?:[mk]|tr|triệu|trieu)?)").matcher(text);
         if (mBudget.find()) {
             budget = parseBudgetAmount(mBudget.group(1));
+        }
+
+        Matcher mReserve = Pattern.compile("(?i)(?:reserve|emergency|dự\\s*phòng|duphong)\\s*[:=]?\\s*([0-9.,]+(?:[mk]|tr|triệu|trieu)?)").matcher(text);
+        if (mReserve.find()) {
+            reserve = parseBudgetAmount(mReserve.group(1));
         }
 
         Matcher mWeight = Pattern.compile("(?i)(?:weight|cân\\s*nặng|cannang|can)\\s*[:=]?\\s*([0-9]+(?:[.,][0-9]+)?)(?:\\s*kg)?").matcher(text);
@@ -211,7 +240,7 @@ public class UserProfileService {
             } catch (Exception ignored) {}
         }
 
-        Matcher mName = Pattern.compile("(?i)(?:name|tên|ten)\\s*[:=]?\\s*([a-zA-Z0-9_\\-\\s]+?)(?:\\s+(?:budget|weight|sleep|baseline)|$)").matcher(text);
+        Matcher mName = Pattern.compile("(?i)(?:name|tên|ten)\\s*[:=]?\\s*([a-zA-Z0-9_\\-\\s]+?)(?:\\s+(?:budget|weight|sleep|baseline|reserve)|$)").matcher(text);
         if (mName.find()) {
             name = mName.group(1).trim();
         }
@@ -222,12 +251,9 @@ public class UserProfileService {
             String clean = tok.trim();
             if (clean.isBlank()) continue;
 
-            // e.g. "65kg" or "65.5kg"
             if (weight == null && clean.matches("(?i)^[0-9]+(?:[.,][0-9]+)?kg$")) {
                 weight = parseDoubleSafe(clean.replaceAll("(?i)kg", ""));
-            }
-            // e.g. "8h" or "7.5h" or "7h30"
-            else if (sleep == null && clean.matches("(?i)^[0-9]+(?:[.,][0-9]+)?(?:h|hrs)$")) {
+            } else if (sleep == null && clean.matches("(?i)^[0-9]+(?:[.,][0-9]+)?(?:h|hrs)$")) {
                 sleep = parseDoubleSafe(clean.replaceAll("(?i)(?:hrs|h)", ""));
             } else if (sleep == null && clean.matches("(?i)^(\\d+)h(\\d+)$")) {
                 Matcher hm = Pattern.compile("(?i)^(\\d+)h(\\d+)$").matcher(clean);
@@ -236,14 +262,12 @@ public class UserProfileService {
                     double m = Double.parseDouble(hm.group(2));
                     sleep = Math.round((h + m / 60.0) * 10.0) / 10.0;
                 }
-            }
-            // e.g. "15M", "15tr", "12m", "10k"
-            else if (budget == null && clean.matches("(?i)^[0-9.,]+(?:[mk]|tr|triệu|trieu)$")) {
+            } else if (budget == null && clean.matches("(?i)^[0-9.,]+(?:[mk]|tr|triệu|trieu)$")) {
                 budget = parseBudgetAmount(clean);
             }
         }
 
-        return new ParsedProfileUpdate(budget, weight, sleep, baseline, name);
+        return new ParsedProfileUpdate(budget, reserve, weight, sleep, baseline, name);
     }
 
     public static Long parseBudgetAmount(String input) {
@@ -259,7 +283,6 @@ public class UserProfileService {
                 double val = Double.parseDouble(numStr);
                 return (long) (val * 1_000L);
             } else {
-                // Remove thousand separators
                 String clean = s.replace(".", "").replace(",", "");
                 return Long.parseLong(clean);
             }

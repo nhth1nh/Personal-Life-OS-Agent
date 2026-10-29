@@ -1,5 +1,6 @@
 package com.ploa.finance.model;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import jakarta.persistence.*;
 import java.math.BigDecimal;
 import java.time.LocalDate;
@@ -53,6 +54,7 @@ public class Income {
     @Column(name = "note", columnDefinition = "TEXT")
     private String note;
 
+    @JsonIgnore
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "account_id")
     private FinancialAccount account;
@@ -116,6 +118,7 @@ public class Income {
 
     public FinancialAccount getAccount() { return account; }
     public void setAccount(FinancialAccount account) { this.account = account; }
+    public UUID getAccountId() { return account != null ? account.getId() : null; }
 
     public OffsetDateTime getCreatedAt() { return createdAt; }
     public OffsetDateTime getUpdatedAt() { return updatedAt; }

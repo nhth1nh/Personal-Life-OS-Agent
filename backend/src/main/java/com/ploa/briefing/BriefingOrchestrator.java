@@ -120,7 +120,8 @@ public class BriefingOrchestrator {
                     today,
                     healthService.computeReadiness(today),
                     healthService.computeWeightEma(),
-                    financeService.getBurnRate()
+                    financeService.getBurnRate(),
+                    financeService.getCashFlow()
             );
 
             String briefingText = generateBriefing(ctx);
@@ -137,7 +138,8 @@ public class BriefingOrchestrator {
                 today,
                 healthService.computeReadiness(today),
                 healthService.computeWeightEma(),
-                financeService.getBurnRate()
+                financeService.getBurnRate(),
+                financeService.getCashFlow()
         );
         return generateBriefing(ctx);
     }
@@ -195,7 +197,7 @@ public class BriefingOrchestrator {
         var f = ctx.burnRate();
         String yesterdayWorkouts = activityService.getWorkoutSummaryText(ctx.date().minusDays(1));
 
-        return """
+        String base = """
                 %s
                 
                 === DAILY MORNING BRIEFING DATA for %s ===
@@ -255,6 +257,30 @@ public class BriefingOrchestrator {
                 f.daysElapsed(), f.daysRemaining(),
                 f.categoryBreakdown().toString()
         );
+
+        var cf = ctx.cashFlow();
+        if (cf != null) {
+            base += """
+
+                --- CASH FLOW & DEBT LIQUIDITY ---
+                Liquid cash available now: %s VND
+                Expected inflows before month-end: %s VND
+                Committed unpaid debt before month-end: %s VND
+                Spendable cash now: %s VND
+                Cash-aware safe daily allowance: %s VND/day
+                Liquidity status: %s
+                Advisory note: %s
+                """.formatted(
+                    VND.format(cf.liquidCashNow().longValue()),
+                    VND.format(cf.expectedInflowsBeforeMonthEnd().longValue()),
+                    VND.format(cf.unpaidDebtObligationsBeforeMonthEnd().longValue()),
+                    VND.format(cf.spendableCash().longValue()),
+                    VND.format(cf.safeDailyAllowance().longValue()),
+                    cf.liquidityStatus(),
+                    cf.recommendation()
+            );
+        }
+        return base;
     }
 
     private String buildEveningContextString(LocalDate today,

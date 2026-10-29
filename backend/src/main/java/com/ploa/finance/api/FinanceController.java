@@ -2,9 +2,11 @@ package com.ploa.finance.api;
 
 import com.ploa.ai.VisionOcrService;
 import com.ploa.ai.dto.OcrResult;
+import com.ploa.finance.api.dto.CreateTransactionRequest;
 import com.ploa.finance.api.dto.FinanceAnalyticsResponse;
 import com.ploa.finance.api.dto.OcrMetricsResponse;
 import com.ploa.finance.engine.dto.BurnRateResult;
+import com.ploa.finance.engine.dto.CashFlowSummary;
 import com.ploa.finance.model.Transaction;
 import com.ploa.finance.service.FinanceService;
 import org.slf4j.Logger;
@@ -42,6 +44,14 @@ public class FinanceController {
     }
 
     /**
+     * Get deterministic cash-flow waterfall, spendable cash, safe daily allowance, and liquidity status.
+     */
+    @GetMapping("/cashflow")
+    public ResponseEntity<CashFlowSummary> getCashFlow() {
+        return ResponseEntity.ok(financeService.getCashFlow());
+    }
+
+    /**
      * Get comprehensive financial analytics and category breakdown for a given month.
      */
     @GetMapping("/analytics")
@@ -57,6 +67,14 @@ public class FinanceController {
     public ResponseEntity<List<Transaction>> getRecentTransactions(
             @RequestParam(defaultValue = "30") int limit) {
         return ResponseEntity.ok(financeService.getRecentTransactions(limit));
+    }
+
+    /**
+     * Directly create a manual transaction (discretionary, fixed, or adjustment).
+     */
+    @PostMapping("/transactions")
+    public ResponseEntity<Transaction> createDirectTransaction(@RequestBody CreateTransactionRequest req) {
+        return ResponseEntity.ok(financeService.createDirectExpense(req));
     }
 
     /**

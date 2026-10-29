@@ -4,7 +4,11 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.ploa.ai.dto.OcrResult;
 import com.ploa.finance.api.dto.OcrMetricsResponse;
 import com.ploa.finance.engine.BurnRateEngine;
+import com.ploa.finance.api.dto.CreateTransactionRequest;
+import com.ploa.finance.engine.CashAwareAllowanceEngine;
 import com.ploa.finance.engine.dto.BurnRateResult;
+import com.ploa.finance.engine.dto.CashFlowSummary;
+import com.ploa.finance.model.TransactionType;
 import com.ploa.finance.model.OcrAudit;
 import com.ploa.finance.model.SpendType;
 import com.ploa.finance.model.Transaction;
@@ -38,24 +42,34 @@ public class FinanceService {
     private final OcrAuditRepository ocrAuditRepo;
     private final BurnRateEngine burnRateEngine;
     private final UserProfileService profileService;
+    private final CashAwareAllowanceEngine cashAwareAllowanceEngine;
 
     public record DuplicateCheckResult(boolean hasDuplicate, String warningMessage, Transaction matchedTransaction) {}
 
     public FinanceService(TransactionRepository repo,
                           OcrAuditRepository ocrAuditRepo,
                           BurnRateEngine burnRateEngine) {
-        this(repo, ocrAuditRepo, burnRateEngine, null);
+        this(repo, ocrAuditRepo, burnRateEngine, null, null);
+    }
+
+    public FinanceService(TransactionRepository repo,
+                          OcrAuditRepository ocrAuditRepo,
+                          BurnRateEngine burnRateEngine,
+                          UserProfileService profileService) {
+        this(repo, ocrAuditRepo, burnRateEngine, profileService, null);
     }
 
     @Autowired
     public FinanceService(TransactionRepository repo,
                           OcrAuditRepository ocrAuditRepo,
                           BurnRateEngine burnRateEngine,
-                          UserProfileService profileService) {
+                          UserProfileService profileService,
+                          CashAwareAllowanceEngine cashAwareAllowanceEngine) {
         this.repo = repo;
         this.ocrAuditRepo = ocrAuditRepo;
         this.burnRateEngine = burnRateEngine;
         this.profileService = profileService;
+        this.cashAwareAllowanceEngine = cashAwareAllowanceEngine;
     }
 
     /**
@@ -264,6 +278,34 @@ public class FinanceService {
     @Transactional(readOnly = true)
     public BurnRateResult getBurnRate() {
         return burnRateEngine.compute();
+    }
+
+    @Transactional(readOnly = true)
+    public CashFlowSummary getCashFlow() {
+        if (cashAwareAllowanceEngine != null) {
+            return cashAwareAllowanceEngine.evaluate();
+        }
+        return null;
+    }
+
+    @Transactional
+    public Transaction createDirectExpense(CreateTransactionRequest req) {
+        Transaction tx = new Transaction();
+        tx.setAccountId(req.accountId() != null ? req.accountId() : UUID.fromString("00000000-0000-0000-0000-000000000001"));
+        tx.setAmount(req.amount() != null ? req.amount() : 0L);
+        tx.setCategory(req.category() != null ? req.category() : "General");
+        SpendType spendType = req.spendType() != null ? req.spendType() : SpendType.DISCRETIONARY;
+        tx.setSpendType(spendType);
+        tx.setTransactionType(req.transactionType() != null ? req.transactionType() :
+                (spendType == SpendType.FIXED ? TransactionType.EXPENSE_FIXED : TransactionType.EXPENSE_DISCRETIONARY));
+        tx.setMerchant(req.merchant());
+        tx.setTxDate(req.txDate() != null ? req.txDate() : LocalDate.now(BurnRateEngine.ZONE));
+        tx.setNote(req.note());
+        tx.setConfirmed(true);
+        tx.setSourcePlatform("manual");
+        Transaction saved = repo.save(tx);
+        log.info("Direct transaction created: id={}, amount={} VND, merchant={}", saved.getId(), saved.getAmount(), saved.getMerchant());
+        return saved;
     }
 
     @Transactional(readOnly = true)

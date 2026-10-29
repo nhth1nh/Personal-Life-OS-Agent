@@ -15,7 +15,8 @@ import java.util.UUID;
 @Repository
 public interface DebtScheduleRepository extends JpaRepository<DebtSchedule, UUID> {
 
-    List<DebtSchedule> findByDebtIdOrderByDueDateAsc(UUID debtId);
+    @Query("SELECT s FROM DebtSchedule s WHERE s.debt.id = :debtId ORDER BY s.dueDate ASC")
+    List<DebtSchedule> findByDebtIdOrderByDueDateAsc(@Param("debtId") UUID debtId);
 
     List<DebtSchedule> findByDueDateBetweenAndStatus(LocalDate startDate, LocalDate endDate, ScheduleStatus status);
 

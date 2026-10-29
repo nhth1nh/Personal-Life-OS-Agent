@@ -2,7 +2,15 @@ package com.ploa.assistant.tools;
 
 import com.ploa.assistant.memory.MemoryService;
 import com.ploa.assistant.memory.UserMemory;
+import com.ploa.finance.api.dto.CreateIncomeRequest;
+import com.ploa.finance.api.dto.CreateTransactionRequest;
 import com.ploa.finance.engine.dto.BurnRateResult;
+import com.ploa.finance.engine.dto.CashFlowSummary;
+import com.ploa.finance.engine.dto.PayoffSimulationComparison;
+import com.ploa.finance.model.*;
+import com.ploa.finance.service.DebtService;
+import com.ploa.finance.service.IncomeService;
+import java.math.BigDecimal;
 import com.ploa.finance.model.SpendType;
 import com.ploa.finance.model.Transaction;
 import com.ploa.finance.service.FinanceService;
@@ -36,6 +44,8 @@ public class AssistantTools {
     private final HealthService healthService;
     private final ActivityService activityService;
     private final FinanceService financeService;
+    private final DebtService debtService;
+    private final IncomeService incomeService;
     private final MemoryService memoryService;
     private final UserProfileService profileService;
 
@@ -43,14 +53,29 @@ public class AssistantTools {
     public AssistantTools(HealthService healthService,
                           ActivityService activityService,
                           FinanceService financeService,
+                          DebtService debtService,
+                          IncomeService incomeService,
                           MemoryService memoryService,
                           UserProfileService profileService) {
         this.healthService = healthService;
         this.activityService = activityService;
         this.financeService = financeService;
+        this.debtService = debtService;
+        this.incomeService = incomeService;
         this.memoryService = memoryService;
         this.profileService = profileService;
     }
+
+    public record DebtSummary(
+            String id,
+            String name,
+            String creditor,
+            String debtType,
+            BigDecimal currentPrincipal,
+            BigDecimal interestRateApr,
+            BigDecimal monthlyMinimumDue,
+            LocalDate maturityDate
+    ) {}
 
     public record DailyHealthSummary(
             LocalDate date,
@@ -162,6 +187,93 @@ public class AssistantTools {
     public BurnRateResult getFinancialStatus() {
         log.info("Assistant tool call: getFinancialStatus()");
         return financeService.getBurnRate();
+    }
+
+    @Tool(description = "Get real-world cash-flow waterfall: liquid cash available now, expected inflows before month-end, committed unpaid debt, committed fixed bills, emergency reserve floor, spendable cash, safe daily allowance, and liquidity status (SOLVENT, PROJECTED_SHORTFALL, LIQUIDITY_DEFICIT).")
+    public CashFlowSummary getCashFlowStatus() {
+        log.info("Assistant tool call: getCashFlowStatus()");
+        return financeService.getCashFlow();
+    }
+
+    @Tool(description = "Get the user's active debt obligations and liabilities (lender, debt type, principal balance, interest rate APR, monthly minimum payment due, maturity date).")
+    public List<DebtSummary> getDebtPortfolio() {
+        log.info("Assistant tool call: getDebtPortfolio()");
+        if (debtService == null) return List.of();
+        return debtService.getActiveDebts().stream()
+                .map(d -> new DebtSummary(
+                        d.getId().toString(),
+                        d.getName(),
+                        d.getCreditor(),
+                        d.getDebtType().name(),
+                        d.getCurrentPrincipal(),
+                        d.getInterestRateApr(),
+                        d.getMonthlyMinimumDue(),
+                        d.getMaturityDate()
+                ))
+                .toList();
+    }
+
+    @Tool(description = "Simulate debt payoff acceleration comparing Baseline vs Avalanche (highest APR first) vs Snowball (smallest balance first) for a given monthly surplus cash injection in VND.")
+    public PayoffSimulationComparison simulateDebtPayoff(
+            @ToolParam(description = "Monthly extra surplus cash in VND (e.g. 1000000, 3000000, 5000000). Defaults to 0.", required = false) Long monthlySurplusVnd) {
+        BigDecimal surplus = monthlySurplusVnd != null ? BigDecimal.valueOf(monthlySurplusVnd) : BigDecimal.ZERO;
+        log.info("Assistant tool call: simulateDebtPayoff(surplus={})", surplus);
+        return debtService != null ? debtService.simulatePayoff(surplus) : null;
+    }
+
+    @Tool(description = "Record a manual financial expenditure directly (amount in VND, category, merchant, note, spend type).")
+    public String recordExpense(
+            @ToolParam(description = "Amount in VND (e.g. 50000, 250000)") long amountVnd,
+            @ToolParam(description = "Category (e.g. Food & Dining, Groceries, Transport, Bills, Shopping)", required = false) String category,
+            @ToolParam(description = "Merchant or place (e.g. Grab, Starbucks, WinMart)", required = false) String merchant,
+            @ToolParam(description = "Note or description", required = false) String note,
+            @ToolParam(description = "Spend type: 'DISCRETIONARY' (default) or 'FIXED'", required = false) String spendType) {
+        SpendType st = "FIXED".equalsIgnoreCase(spendType) ? SpendType.FIXED : SpendType.DISCRETIONARY;
+        CreateTransactionRequest req = new CreateTransactionRequest(
+                amountVnd,
+                category != null ? category : "General",
+                st,
+                st == SpendType.FIXED ? TransactionType.EXPENSE_FIXED : TransactionType.EXPENSE_DISCRETIONARY,
+                merchant,
+                LocalDate.now(),
+                null,
+                note
+        );
+        Transaction tx = financeService.createDirectExpense(req);
+        return String.format("Recorded expense: %,d VND for '%s' at %s (Category: %s)",
+                tx.getAmount(), tx.getNote() != null ? tx.getNote() : "Expense",
+                tx.getMerchant() != null ? tx.getMerchant() : "Unknown", tx.getCategory());
+    }
+
+    @Tool(description = "Record an expected or received income stream (source/client/employer, amount in VND, expected date, income type: SALARY, FREELANCE, BONUS, INVESTMENT, OTHER).")
+    public String recordIncome(
+            @ToolParam(description = "Income source (e.g. Google, Client Acme, Techcombank Dividend)") String source,
+            @ToolParam(description = "Amount in VND (e.g. 43000000, 15000000)") long amountVnd,
+            @ToolParam(description = "Expected date YYYY-MM-DD (defaults to today)", required = false) String expectedDate,
+            @ToolParam(description = "Income type: 'SALARY', 'FREELANCE', 'BONUS', 'INVESTMENT', 'OTHER'", required = false) String incomeType) {
+        LocalDate date = parseDate(expectedDate);
+        IncomeType type = IncomeType.SALARY;
+        if (incomeType != null) {
+            try {
+                type = IncomeType.valueOf(incomeType.toUpperCase());
+            } catch (Exception ignored) {}
+        }
+        CreateIncomeRequest req = new CreateIncomeRequest(
+                source,
+                BigDecimal.valueOf(amountVnd),
+                null,
+                date,
+                null,
+                type,
+                type == IncomeType.SALARY ? 1.0 : 0.7,
+                false,
+                IncomeFrequency.MONTHLY,
+                IncomeStatus.EXPECTED,
+                "Logged via Assistant"
+        );
+        Income income = incomeService != null ? incomeService.createIncome(req) : null;
+        return String.format("Recorded income: %,d VND from '%s' expected on %s",
+                amountVnd, source, date);
     }
 
     @Tool(description = "Get recent logged financial transactions for the current month.")

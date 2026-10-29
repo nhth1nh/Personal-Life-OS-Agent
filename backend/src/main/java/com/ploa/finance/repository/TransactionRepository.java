@@ -2,6 +2,7 @@ package com.ploa.finance.repository;
 
 import com.ploa.finance.model.SpendType;
 import com.ploa.finance.model.Transaction;
+import com.ploa.finance.model.TransactionType;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
@@ -26,6 +27,38 @@ public interface TransactionRepository extends JpaRepository<Transaction, UUID> 
     @Query("""
             SELECT COALESCE(SUM(t.amount), 0) FROM Transaction t
             WHERE t.txDate >= :from AND t.txDate <= :to
+            AND t.confirmed = true
+            AND t.transactionType IN (
+                com.ploa.finance.model.TransactionType.EXPENSE_FIXED,
+                com.ploa.finance.model.TransactionType.EXPENSE_DISCRETIONARY,
+                com.ploa.finance.model.TransactionType.DEBT_INTEREST_AND_FEE
+            )
+            """)
+    Long sumOperatingSpendBetween(@Param("from") LocalDate from, @Param("to") LocalDate to);
+
+    @Query("""
+            SELECT COALESCE(SUM(t.amount), 0) FROM Transaction t
+            WHERE t.txDate >= :from AND t.txDate <= :to
+            AND t.confirmed = true
+            AND t.transactionType = com.ploa.finance.model.TransactionType.DEBT_PRINCIPAL_PAYMENT
+            """)
+    Long sumDebtPrincipalPaidBetween(@Param("from") LocalDate from, @Param("to") LocalDate to);
+
+    @Query("""
+            SELECT COALESCE(SUM(t.amount), 0) FROM Transaction t
+            WHERE t.txDate >= :from AND t.txDate <= :to
+            AND t.confirmed = true
+            AND t.transactionType = :txType
+            """)
+    Long sumByTransactionTypeBetween(
+            @Param("from") LocalDate from,
+            @Param("to") LocalDate to,
+            @Param("txType") TransactionType txType
+    );
+
+    @Query("""
+            SELECT COALESCE(SUM(t.amount), 0) FROM Transaction t
+            WHERE t.txDate >= :from AND t.txDate <= :to
             AND t.spendType = :spendType
             AND t.confirmed = true
             """)
@@ -44,6 +77,21 @@ public interface TransactionRepository extends JpaRepository<Transaction, UUID> 
             ORDER BY total DESC
             """)
     List<Object[]> sumByCategoryBetween(@Param("from") LocalDate from, @Param("to") LocalDate to);
+
+    @Query("""
+            SELECT t.category, COALESCE(SUM(t.amount), 0) AS total
+            FROM Transaction t
+            WHERE t.txDate >= :from AND t.txDate <= :to
+            AND t.confirmed = true
+            AND t.transactionType IN (
+                com.ploa.finance.model.TransactionType.EXPENSE_FIXED,
+                com.ploa.finance.model.TransactionType.EXPENSE_DISCRETIONARY,
+                com.ploa.finance.model.TransactionType.DEBT_INTEREST_AND_FEE
+            )
+            GROUP BY t.category
+            ORDER BY total DESC
+            """)
+    List<Object[]> sumOperatingSpendByCategoryBetween(@Param("from") LocalDate from, @Param("to") LocalDate to);
 
     List<Transaction> findByTelegramMsgId(Long telegramMsgId);
 

@@ -14,7 +14,8 @@ import java.util.UUID;
 @Repository
 public interface DebtPaymentRepository extends JpaRepository<DebtPayment, UUID> {
 
-    List<DebtPayment> findByDebtIdOrderByPaymentDateDesc(UUID debtId);
+    @Query("SELECT p FROM DebtPayment p WHERE p.debt.id = :debtId ORDER BY p.paymentDate DESC")
+    List<DebtPayment> findByDebtIdOrderByPaymentDateDesc(@Param("debtId") UUID debtId);
 
     List<DebtPayment> findByPaymentDateBetweenOrderByPaymentDateDesc(LocalDate startDate, LocalDate endDate);
 

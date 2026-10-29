@@ -8,17 +8,21 @@ import org.springframework.stereotype.Component;
 
 import java.time.LocalDate;
 import java.time.YearMonth;
+import java.time.ZoneId;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
 /**
  * Deterministic financial burn rate engine.
- * Computes MTD spend, daily burn rate, safe daily allowance, and category breakdown.
- * No LLM involvement.
+ * Computes MTD operating spend, daily burn rate, safe daily allowance, and category breakdown.
+ * Invariant: Debt principal repayment and internal transfers are strictly excluded from operating spend.
+ * Temporal Grounding: Evaluates against Asia/Ho_Chi_Minh (UTC+7).
  */
 @Component
 public class BurnRateEngine {
+
+    public static final ZoneId ZONE = ZoneId.of("Asia/Ho_Chi_Minh");
 
     private final TransactionRepository repo;
     private final UserProfileService profileService;
@@ -29,7 +33,10 @@ public class BurnRateEngine {
     }
 
     public BurnRateResult compute() {
-        LocalDate today = LocalDate.now();
+        return computeForDate(LocalDate.now(ZONE));
+    }
+
+    public BurnRateResult computeForDate(LocalDate today) {
         YearMonth currentMonth = YearMonth.of(today.getYear(), today.getMonth());
         LocalDate monthStart = currentMonth.atDay(1);
         int daysInMonth = currentMonth.lengthOfMonth();
@@ -38,9 +45,15 @@ public class BurnRateEngine {
 
         long budgetVnd = profileService.getMonthlyBudgetVnd();
 
-        long mtdTotal = repo.sumConfirmedAmountBetween(monthStart, today);
+        Long operatingTotal = repo.sumOperatingSpendBetween(monthStart, today);
         long mtdDiscretionary = repo.sumBySpendTypeBetween(monthStart, today, SpendType.DISCRETIONARY);
         long mtdFixed = repo.sumBySpendTypeBetween(monthStart, today, SpendType.FIXED);
+
+        // Fallback to spendType sum if operating spend query yields 0 for legacy records
+        long mtdTotal = (operatingTotal != null && operatingTotal > 0)
+                ? operatingTotal
+                : (mtdDiscretionary + mtdFixed);
+
         long remaining = budgetVnd - mtdTotal;
 
         double dailyBurnRate = daysElapsed > 0
@@ -57,8 +70,12 @@ public class BurnRateEngine {
                 ? Math.max(0, (1.0 - mtdTotal / proportionalBudget) * 100)
                 : 0.0;
 
-        // Category breakdown
-        List<Object[]> rows = repo.sumByCategoryBetween(monthStart, today);
+        // Category breakdown (operating spend only)
+        List<Object[]> rows = repo.sumOperatingSpendByCategoryBetween(monthStart, today);
+        if (rows.isEmpty()) {
+            rows = repo.sumByCategoryBetween(monthStart, today);
+        }
+
         Map<String, Long> breakdown = new LinkedHashMap<>();
         for (Object[] row : rows) {
             breakdown.put((String) row[0], (Long) row[1]);

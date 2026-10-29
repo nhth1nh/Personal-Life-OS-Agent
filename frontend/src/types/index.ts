@@ -99,6 +99,7 @@ export interface Transaction {
   category: string;
   txDate: string;
   spendType: 'DISCRETIONARY' | 'FIXED';
+  transactionType?: string;
   invoiceNumber?: string;
   note?: string;
   confirmed: boolean;
@@ -145,4 +146,105 @@ export interface ChatMessage {
   content: string;
   timestamp: string;
   groundingPills?: string[];
+}
+
+// ── Cash Flow & Debt Redesign Types ──────────────────────────────────────
+
+export type LiquidityStatus = 'SOLVENT' | 'PROJECTED_SHORTFALL' | 'LIQUIDITY_DEFICIT';
+
+export interface CashFlowSummary {
+  asOfDate: string;
+  liquidCashNow: number;
+  expectedInflowsBeforeMonthEnd: number;
+  unpaidDebtObligationsBeforeMonthEnd: number;
+  unpaidFixedBillsBeforeMonthEnd: number;
+  emergencyReserveFloor: number;
+  spendableCash: number;
+  daysRemainingInMonth: number;
+  safeDailyAllowance: number;
+  liquidityStatus: LiquidityStatus;
+  mtdIncomeReceived: number;
+  mtdOperatingSpend: number;
+  mtdDebtPrincipalPaid: number;
+  netCashFlowMtd: number;
+  netSavingsMtd: number;
+  recommendation: string;
+  solvent: boolean;
+  deficit: boolean;
+}
+
+export interface Debt {
+  id: string;
+  name: string;
+  creditor: string;
+  debtType: 'AMORTIZING_LOAN' | 'REVOLVING_CREDIT' | 'INSTALLMENT_BNPL' | 'PEER_DEBT';
+  currency: string;
+  originalPrincipal: number;
+  currentPrincipal: number;
+  interestRateApr: number;
+  interestAccrualConvention: 'ACTUAL_365' | 'THIRTY_360' | 'MONTHLY_FLAT';
+  monthlyMinimumDue: number;
+  dueDayOfMonth: number;
+  originationDate: string;
+  maturityDate?: string;
+  status: 'ACTIVE' | 'PAID_OFF' | 'DEFAULTED' | 'SETTLED';
+  notes?: string;
+}
+
+export interface DebtSchedule {
+  id: string;
+  installmentNumber: number;
+  dueDate: string;
+  expectedPayment: number;
+  expectedPrincipal: number;
+  expectedInterest: number;
+  remainingPrincipalAfter: number;
+  status: 'UPCOMING' | 'PAID' | 'OVERDUE';
+}
+
+export interface Income {
+  id: string;
+  source: string;
+  expectedAmount: number;
+  actualAmount?: number;
+  currency: string;
+  expectedDate: string;
+  receivedDate?: string;
+  incomeType: 'SALARY' | 'BONUS' | 'FREELANCE' | 'INVESTMENT' | 'OTHER';
+  confidenceFactor: number;
+  isRecurring: boolean;
+  frequency?: 'MONTHLY' | 'BIWEEKLY' | 'AD_HOC';
+  status: 'EXPECTED' | 'RECEIVED' | 'CANCELLED';
+  note?: string;
+}
+
+export interface DebtPayoffDetail {
+  debtId: string;
+  debtName: string;
+  startingPrincipal: number;
+  totalInterestPaid: number;
+  totalPrincipalPaid: number;
+  monthsToPayoff: number;
+  payoffDate: string;
+}
+
+export interface PayoffStrategyResult {
+  strategy: 'BASELINE' | 'AVALANCHE' | 'SNOWBALL';
+  debtFreeDate: string;
+  totalMonths: number;
+  totalInterestPaid: number;
+  totalPrincipalPaid: number;
+  totalPayments: number;
+  debtDetails: DebtPayoffDetail[];
+}
+
+export interface PayoffSimulationComparison {
+  monthlySurplusApplied: number;
+  baseline: PayoffStrategyResult;
+  avalanche: PayoffStrategyResult;
+  snowball: PayoffStrategyResult;
+  avalancheInterestSaved: number;
+  avalancheMonthsSaved: number;
+  snowballInterestSaved: number;
+  snowballMonthsSaved: number;
 }

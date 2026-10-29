@@ -36,7 +36,7 @@ public class VisionOcrService {
             
             Return ONLY a valid JSON object with these fields (use null for missing values):
             {
-              "document_type": "BANK_TRANSFER" | "RECEIPT" | "E_COMMERCE" | "UNKNOWN",
+              "document_type": "BANK_TRANSFER" | "RECEIPT" | "E_COMMERCE" | "BANK_STATEMENT_DEBT" | "UNKNOWN",
               "source_platform": "VietQR" | "Shopee" | "manual" | null,
               "invoice_number": "<invoice number, order ID, or bank reference code if visible>" | null,
               "transaction_date": "YYYY-MM-DD" | null,
@@ -55,6 +55,7 @@ public class VisionOcrService {
             - NEVER invent data. Use null if uncertain.
             - Amounts MUST be integers in VND (multiply by 1000 if shown in thousands, e.g. 50k -> 50000).
             - Bills/Rent/Subscriptions/Utilities = FIXED. Everything else = DISCRETIONARY.
+            - If the image is a bank loan schedule, credit card statement, or BNPL contract: document_type = 'BANK_STATEMENT_DEBT', category = 'Debt Repayment', spend_type = 'FIXED', merchant = lender name.
             - Return ONLY the JSON object, no markdown, no explanation.
             """;
 
@@ -80,6 +81,7 @@ public class VisionOcrService {
             - Amounts in VND: "50k" = 50000, "1.5m" = 1500000.
             - If the input does NOT describe an expense or monetary payment (e.g. conversational chat, dates, general text), set "total_amount": null and "confidence": 0.0.
             - Bills/Rent/Subscriptions/Utilities = FIXED. Everything else = DISCRETIONARY.
+            - If the image is a bank loan schedule, credit card statement, or BNPL contract: document_type = 'BANK_STATEMENT_DEBT', category = 'Debt Repayment', spend_type = 'FIXED', merchant = lender name.
             - Return ONLY the JSON object, no markdown.
             """;
 
