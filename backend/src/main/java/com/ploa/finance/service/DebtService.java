@@ -244,6 +244,27 @@ public class DebtService {
      * Previews and reconciles an extracted Debt OCR scan.
      * Evaluates true effective APR via IRR, matches existing liabilities, and derives recommended actions.
      */
+    public static BigDecimal parseStatedApr(String rateStr, Double statedAprVal) {
+        if (statedAprVal != null && statedAprVal > 0) {
+            return BigDecimal.valueOf(statedAprVal).setScale(2, RoundingMode.HALF_UP);
+        }
+        if (rateStr == null || rateStr.isBlank()) {
+            return null;
+        }
+        java.util.regex.Pattern pattern = java.util.regex.Pattern.compile("(?i)([0-9]+(?:[.,][0-9]+)?)\\s*%\\s*(?:/\\s*(tháng|month|năm|year|m|y))?");
+        java.util.regex.Matcher m = pattern.matcher(rateStr.trim());
+        if (m.find()) {
+            String numStr = m.group(1).replace(',', '.');
+            double val = Double.parseDouble(numStr);
+            String unit = m.group(2);
+            if (unit != null && (unit.equalsIgnoreCase("tháng") || unit.equalsIgnoreCase("month") || unit.equalsIgnoreCase("m"))) {
+                val = val * 12.0;
+            }
+            return BigDecimal.valueOf(val).setScale(2, RoundingMode.HALF_UP);
+        }
+        return null;
+    }
+
     @Transactional(readOnly = true)
     public DebtScanPreviewResponse previewDebtScan(DebtOcrResult ocr) {
         if (ocr == null) {
@@ -253,9 +274,21 @@ public class DebtService {
         List<Debt> activeDebts = getActiveDebts();
         Debt matchedDebt = findMatchingDebt(ocr, activeDebts);
 
-        BigDecimal principal = ocr.currentPrincipal() != null && ocr.currentPrincipal() > 0
+        BigDecimal originalPrincipal = ocr.originalPrincipal() != null && ocr.originalPrincipal() > 0
+                ? BigDecimal.valueOf(ocr.originalPrincipal())
+                : null;
+
+        BigDecimal currentPrincipal = ocr.currentPrincipal() != null && ocr.currentPrincipal() > 0
                 ? BigDecimal.valueOf(ocr.currentPrincipal())
-                : (ocr.originalPrincipal() != null ? BigDecimal.valueOf(ocr.originalPrincipal()) : BigDecimal.ZERO);
+                : null;
+
+        BigDecimal principal = currentPrincipal != null
+                ? currentPrincipal
+                : (originalPrincipal != null ? originalPrincipal : BigDecimal.ZERO);
+
+        if (originalPrincipal == null) {
+            originalPrincipal = principal;
+        }
 
         BigDecimal monthlyDue = ocr.monthlyPayment() != null
                 ? BigDecimal.valueOf(ocr.monthlyPayment())
@@ -265,14 +298,29 @@ public class DebtService {
                 ? ocr.termMonths()
                 : (ocr.remainingMonths() != null && ocr.remainingMonths() > 0 ? ocr.remainingMonths() : 12);
 
-        BigDecimal statedApr = ocr.statedApr() != null ? BigDecimal.valueOf(ocr.statedApr()) : null;
+        BigDecimal statedApr = parseStatedApr(ocr.statedInterestRate(), ocr.statedApr());
+
+        // Base calculation on original borrowing principal for contract terms
+        BigDecimal calculationPrincipal = originalPrincipal.compareTo(BigDecimal.ZERO) > 0 ? originalPrincipal : principal;
+
+        // Auto-calculate regular monthly installment if missing or settled for current period
+        if (monthlyDue.compareTo(BigDecimal.ZERO) <= 0 && calculationPrincipal.compareTo(BigDecimal.ZERO) > 0 && statedApr != null && statedApr.compareTo(BigDecimal.ZERO) > 0) {
+            boolean isMonthlyQuoted = ocr.statedInterestRate() != null && ocr.statedInterestRate().toLowerCase().matches(".*(tháng|month|/m).*");
+            if (isMonthlyQuoted) {
+                double monthlyRate = statedApr.doubleValue() / 12.0 / 100.0;
+                double flatMonthlyPayment = (calculationPrincipal.doubleValue() / termMonths) + (calculationPrincipal.doubleValue() * monthlyRate);
+                monthlyDue = BigDecimal.valueOf(flatMonthlyPayment).setScale(0, RoundingMode.HALF_UP);
+            } else {
+                monthlyDue = amortizationEngine.calculateAnnuityMonthlyPayment(calculationPrincipal, statedApr, termMonths);
+            }
+        }
 
         // Deterministic APR Analysis & IRR Derivation
-        AprAnalysisResult aprAnalysis = amortizationEngine.analyzeApr(principal, monthlyDue, termMonths, statedApr);
+        AprAnalysisResult aprAnalysis = amortizationEngine.analyzeApr(calculationPrincipal, monthlyDue, termMonths, statedApr);
         BigDecimal recommendedApr = aprAnalysis.effectiveApr();
 
-        if (monthlyDue.compareTo(BigDecimal.ZERO) == 0 && principal.compareTo(BigDecimal.ZERO) > 0) {
-            monthlyDue = amortizationEngine.calculateAnnuityMonthlyPayment(principal, recommendedApr, termMonths);
+        if (monthlyDue.compareTo(BigDecimal.ZERO) <= 0 && calculationPrincipal.compareTo(BigDecimal.ZERO) > 0) {
+            monthlyDue = amortizationEngine.calculateAnnuityMonthlyPayment(calculationPrincipal, recommendedApr, termMonths);
         }
 
         // Determine Action and Matching semantics
@@ -332,6 +380,7 @@ public class DebtService {
                 recommendedName,
                 recommendedCreditor,
                 recommendedType,
+                originalPrincipal,
                 principal,
                 recommendedApr,
                 monthlyDue,
@@ -355,12 +404,15 @@ public class DebtService {
 
         switch (req.action()) {
             case CREATE_NEW_DEBT -> {
+                BigDecimal orig = req.originalPrincipal() != null && req.originalPrincipal().compareTo(BigDecimal.ZERO) > 0
+                        ? req.originalPrincipal()
+                        : req.principal();
                 CreateDebtRequest createReq = new CreateDebtRequest(
                         req.name(),
                         req.creditor(),
                         req.debtType() != null ? req.debtType() : DebtType.AMORTIZING_LOAN,
                         "VND",
-                        req.principal(),
+                        orig,
                         req.principal(),
                         req.apr(),
                         InterestAccrualConvention.ACTUAL_365,

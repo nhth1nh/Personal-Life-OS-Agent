@@ -93,6 +93,7 @@ export const FinanceHubView: React.FC = () => {
     name: '',
     creditor: '',
     debtType: 'AMORTIZING_LOAN' as Debt['debtType'],
+    originalPrincipal: '',
     principal: '',
     apr: '',
     monthlyDue: '',
@@ -234,6 +235,7 @@ export const FinanceHubView: React.FC = () => {
         name: preview.recommendedName || '',
         creditor: preview.recommendedCreditor || '',
         debtType: preview.recommendedDebtType || 'AMORTIZING_LOAN',
+        originalPrincipal: preview.recommendedOriginalPrincipal ? String(preview.recommendedOriginalPrincipal) : (preview.recommendedPrincipal ? String(preview.recommendedPrincipal) : ''),
         principal: preview.recommendedPrincipal ? String(preview.recommendedPrincipal) : '',
         apr: preview.recommendedApr !== undefined ? String(preview.recommendedApr) : '',
         monthlyDue: preview.recommendedMonthlyDue ? String(preview.recommendedMonthlyDue) : '',
@@ -259,6 +261,7 @@ export const FinanceHubView: React.FC = () => {
         name: debtScanForm.name,
         creditor: debtScanForm.creditor,
         debtType: debtScanForm.debtType,
+        originalPrincipal: debtScanForm.originalPrincipal ? Number(debtScanForm.originalPrincipal) : Number(debtScanForm.principal),
         principal: Number(debtScanForm.principal),
         apr: Number(debtScanForm.apr),
         monthlyDue: Number(debtScanForm.monthlyDue),
@@ -1478,18 +1481,39 @@ export const FinanceHubView: React.FC = () => {
 
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <label className="text-xs text-slate-400 block mb-1">Principal / Balance (VND)</label>
+                <label className="text-xs text-slate-400 block mb-1">Original Loan (VND)</label>
                 <input
                   type="number"
-                  required
-                  value={debtScanForm.principal}
-                  onChange={(e) => setDebtScanForm({ ...debtScanForm, principal: e.target.value })}
+                  value={debtScanForm.originalPrincipal}
+                  onChange={(e) => setDebtScanForm({ ...debtScanForm, originalPrincipal: e.target.value })}
+                  placeholder="e.g. 40000000"
                   className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-slate-100 focus:outline-none focus:border-purple-500"
                 />
               </div>
 
               <div>
-                <label className="text-xs text-slate-400 block mb-1">Effective APR (%)</label>
+                <label className="text-xs text-slate-400 block mb-1">Current Balance (VND)</label>
+                <input
+                  type="number"
+                  required
+                  value={debtScanForm.principal}
+                  onChange={(e) => setDebtScanForm({ ...debtScanForm, principal: e.target.value })}
+                  placeholder="e.g. 30964757"
+                  className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-slate-100 focus:outline-none focus:border-purple-500"
+                />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="text-xs text-slate-400 block mb-1">
+                  Effective APR (%)
+                  {(debtScanPreview.rawOcr?.stated_interest_rate || debtScanPreview.rawOcr?.statedInterestRate) && (
+                    <span className="ml-1 text-[10px] text-amber-400">
+                      ({debtScanPreview.rawOcr?.stated_interest_rate || debtScanPreview.rawOcr?.statedInterestRate})
+                    </span>
+                  )}
+                </label>
                 <input
                   type="number"
                   step="0.01"
@@ -1499,9 +1523,7 @@ export const FinanceHubView: React.FC = () => {
                   className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-slate-100 focus:outline-none focus:border-purple-500"
                 />
               </div>
-            </div>
 
-            <div className="grid grid-cols-2 gap-3">
               <div>
                 <label className="text-xs text-slate-400 block mb-1">Monthly Payment Due (VND)</label>
                 <input
@@ -1512,7 +1534,9 @@ export const FinanceHubView: React.FC = () => {
                   className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-slate-100 focus:outline-none focus:border-purple-500"
                 />
               </div>
+            </div>
 
+            <div className="grid grid-cols-2 gap-3">
               <div>
                 <label className="text-xs text-slate-400 block mb-1">Payment Due Day</label>
                 <input
@@ -1525,17 +1549,19 @@ export const FinanceHubView: React.FC = () => {
                   className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-slate-100 focus:outline-none focus:border-purple-500"
                 />
               </div>
+
+              <div>
+                <label className="text-xs text-slate-400 block mb-1">Notes</label>
+                <input
+                  type="text"
+                  value={debtScanForm.notes}
+                  onChange={(e) => setDebtScanForm({ ...debtScanForm, notes: e.target.value })}
+                  className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-slate-100 focus:outline-none focus:border-purple-500"
+                />
+              </div>
             </div>
 
-            <div>
-              <label className="text-xs text-slate-400 block mb-1">Notes</label>
-              <input
-                type="text"
-                value={debtScanForm.notes}
-                onChange={(e) => setDebtScanForm({ ...debtScanForm, notes: e.target.value })}
-                className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-slate-100 focus:outline-none focus:border-purple-500"
-              />
-            </div>
+
 
             <div className="pt-2">
               <button

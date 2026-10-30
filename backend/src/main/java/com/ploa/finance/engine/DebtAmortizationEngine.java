@@ -127,15 +127,34 @@ public class DebtAmortizationEngine {
      * Analyzes loan terms, resolving missing APR, verifying stated rates, or exposing flat rate traps.
      */
     public AprAnalysisResult analyzeApr(BigDecimal principal, BigDecimal monthlyPayment, int totalMonths, BigDecimal statedApr) {
-        if (principal == null || monthlyPayment == null || totalMonths <= 0) {
+        if (principal == null || totalMonths <= 0) {
             return new AprAnalysisResult(BigDecimal.ZERO, BigDecimal.ZERO, true, "INSUFFICIENT_DATA", "Insufficient loan terms to calculate APR");
         }
 
         double L = principal.doubleValue();
-        double P = monthlyPayment.doubleValue();
+        double P = (monthlyPayment != null) ? monthlyPayment.doubleValue() : 0.0;
         int n = totalMonths;
 
-        if (P * n <= L + 1.0) {
+        // If monthly payment is missing or 0
+        if (P <= 0.0) {
+            if (statedApr != null && statedApr.compareTo(BigDecimal.ZERO) > 0) {
+                BigDecimal normalizedStated = statedApr.compareTo(BigDecimal.ONE) > 0
+                        ? statedApr.setScale(2, RoundingMode.HALF_UP)
+                        : statedApr.multiply(BigDecimal.valueOf(100)).setScale(2, RoundingMode.HALF_UP);
+                return new AprAnalysisResult(
+                        normalizedStated,
+                        normalizedStated,
+                        false,
+                        "STATED_RATE",
+                        String.format("Stated APR of %s%% (Monthly installment auto-calculated from loan terms)", normalizedStated)
+                );
+            }
+            return new AprAnalysisResult(BigDecimal.ZERO, BigDecimal.ZERO, true, "INSUFFICIENT_DATA", "Insufficient loan terms to calculate APR");
+        }
+
+        // True 0% BNPL / installment check (must have P > 0, total payment <= L + 1, and stated APR must not be positive)
+        boolean hasPositiveStatedRate = statedApr != null && statedApr.compareTo(BigDecimal.valueOf(0.01)) > 0;
+        if (!hasPositiveStatedRate && (P * n <= L + 1.0)) {
             return new AprAnalysisResult(
                     BigDecimal.ZERO.setScale(2, RoundingMode.HALF_UP),
                     BigDecimal.ZERO.setScale(2, RoundingMode.HALF_UP),

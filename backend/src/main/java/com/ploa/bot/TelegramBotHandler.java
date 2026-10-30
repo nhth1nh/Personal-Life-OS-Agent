@@ -841,7 +841,12 @@ public class TelegramBotHandler implements SpringLongPollingBot, LongPollingUpda
             sb.append("🏦 <b>Loan / Debt Contract Detected</b>\n\n");
             sb.append("• <b>Lender:</b> ").append(preview.recommendedCreditor()).append("\n");
             sb.append("• <b>Product:</b> ").append(preview.recommendedName()).append("\n");
-            sb.append("• <b>Principal:</b> ").append(String.format("%,d VND", preview.recommendedPrincipal().longValue())).append("\n");
+            if (preview.recommendedOriginalPrincipal() != null && preview.recommendedPrincipal() != null && preview.recommendedOriginalPrincipal().compareTo(preview.recommendedPrincipal()) != 0) {
+                sb.append("• <b>Original Loan:</b> ").append(String.format("%,d VND", preview.recommendedOriginalPrincipal().longValue())).append("\n");
+                sb.append("• <b>Current Balance:</b> ").append(String.format("%,d VND", preview.recommendedPrincipal().longValue())).append("\n");
+            } else {
+                sb.append("• <b>Principal:</b> ").append(String.format("%,d VND", preview.recommendedPrincipal().longValue())).append("\n");
+            }
             sb.append("• <b>Effective APR:</b> ").append(preview.recommendedApr()).append("%\n");
             if (preview.aprAnalysis() != null && preview.aprAnalysis().explanation() != null) {
                 sb.append("• <i>").append(preview.aprAnalysis().explanation()).append("</i>\n");

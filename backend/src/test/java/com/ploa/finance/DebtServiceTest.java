@@ -201,7 +201,7 @@ class DebtServiceTest {
                 2_200_000L,
                 12,
                 12,
-                "10% flat",
+                null,
                 null,
                 5,
                 LocalDate.of(2026, 11, 5),
@@ -301,4 +301,38 @@ class DebtServiceTest {
         assertThat(updated.getDueDayOfMonth()).isEqualTo(25);
     }
 
+    @Test
+    @DisplayName("Should correctly parse monthly rate 1.72%/thang, calculate installment, and expose true APR on 40m loan")
+    void testPreviewDebtScanMonthlyRateLoan() {
+        DebtOcrResult ocr = new DebtOcrResult(
+                "AMORTIZING_LOAN_CONTRACT",
+                "VPBank",
+                "Vay tiền mặt trung hạn",
+                DebtType.AMORTIZING_LOAN,
+                40_000_000L,
+                30_964_757L,
+                null, // 0 VND paid in current period
+                18,
+                null,
+                "1.72%/tháng",
+                null, // model might omit stated_apr
+                5,
+                LocalDate.of(2026, 11, 5),
+                LocalDate.of(2026, 5, 26),
+                false,
+                null,
+                "Disbursement 26/05/2026",
+                0.95
+        );
+
+        DebtScanPreviewResponse preview = debtService.previewDebtScan(ocr);
+
+        assertThat(preview.action()).isEqualTo(ReconciliationAction.CREATE_NEW_DEBT);
+        assertThat(preview.recommendedOriginalPrincipal()).isEqualByComparingTo(BigDecimal.valueOf(40_000_000));
+        assertThat(preview.recommendedPrincipal()).isEqualByComparingTo(BigDecimal.valueOf(30_964_757));
+        assertThat(preview.aprAnalysis().isZeroInterest()).isFalse();
+        // Stated monthly 1.72% * 12 = 20.64% flat -> True effective declining APR is ~36.09%
+        assertThat(preview.recommendedApr()).isGreaterThan(BigDecimal.valueOf(20.0));
+        assertThat(preview.recommendedMonthlyDue()).isGreaterThan(BigDecimal.valueOf(2_500_000));
+    }
 }

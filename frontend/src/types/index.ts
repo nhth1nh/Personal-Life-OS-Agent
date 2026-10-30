@@ -302,6 +302,7 @@ export interface DebtScanPreviewResponse {
   recommendedName: string;
   recommendedCreditor: string;
   recommendedDebtType: 'AMORTIZING_LOAN' | 'REVOLVING_CREDIT' | 'INSTALLMENT_BNPL' | 'PEER_DEBT';
+  recommendedOriginalPrincipal?: number;
   recommendedPrincipal: number;
   recommendedApr: number;
   recommendedMonthlyDue: number;
@@ -318,6 +319,7 @@ export interface ConfirmDebtScanRequest {
   name: string;
   creditor: string;
   debtType: 'AMORTIZING_LOAN' | 'REVOLVING_CREDIT' | 'INSTALLMENT_BNPL' | 'PEER_DEBT';
+  originalPrincipal?: number;
   principal: number;
   apr: number;
   monthlyDue: number;

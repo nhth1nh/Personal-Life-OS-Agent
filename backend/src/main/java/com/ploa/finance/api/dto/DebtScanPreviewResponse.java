@@ -17,6 +17,7 @@ public record DebtScanPreviewResponse(
         String recommendedName,
         String recommendedCreditor,
         DebtType recommendedDebtType,
+        BigDecimal recommendedOriginalPrincipal,
         BigDecimal recommendedPrincipal,
         BigDecimal recommendedApr,
         BigDecimal recommendedMonthlyDue,

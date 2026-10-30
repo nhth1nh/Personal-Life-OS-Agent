@@ -88,38 +88,41 @@ public class VisionOcrService {
 
     private static final String DEBT_OCR_SYSTEM_PROMPT = """
             You are a strict financial debt and statement extraction engine. Extract debt obligation data from the provided image.
-            The image can be a bank loan contract, credit card statement, BNPL schedule (Shopee/HomeCredit/Apple), or debt repayment slip.
+            The image can be a bank loan contract, banking mobile app loan screen, credit card statement, BNPL schedule (Shopee/HomeCredit/Apple), or debt repayment slip.
             
             Return ONLY a valid JSON object with these fields (use null for missing values):
             {
               "document_type": "AMORTIZING_LOAN_CONTRACT" | "CREDIT_CARD_STATEMENT" | "BNPL_SCHEDULE" | "DEBT_PAYMENT_SLIP" | "UNKNOWN",
-              "creditor": "<Bank or lender name, e.g. Shinhan Bank, VPBank, Techcombank, FE Credit, Apple/VPBank, Shopee SPayLater>" | null,
-              "debt_name": "<Descriptive name, e.g. Consumer Loan, VPBank StepUp Visa, iPhone 16 Installment>" | null,
+              "creditor": "<Bank or lender name, e.g. VPBank, Techcombank, Shinhan Bank, FE Credit, Apple/VPBank, Shopee SPayLater, MoMo>" | null,
+              "debt_name": "<Descriptive name, e.g. Consumer Loan, Vay tiền mặt trung hạn, VPBank StepUp Visa, iPhone 16 Installment>" | null,
               "debt_type": "AMORTIZING_LOAN" | "REVOLVING_CREDIT" | "INSTALLMENT_BNPL" | "PEER_DEBT",
-              "original_principal": <integer in VND, total borrowed or original loan amount> | null,
-              "current_principal": <integer in VND, current outstanding balance or statement balance> | null,
-              "monthly_payment": <integer in VND, regular monthly installment or minimum payment due> | null,
-              "term_months": <integer, total number of months / installments> | null,
+              "original_principal": <integer in VND, total original loan amount borrowed, e.g. 40000000> | null,
+              "current_principal": <integer in VND, current outstanding balance or dư nợ còn lại, e.g. 30964757> | null,
+              "monthly_payment": <integer in VND, regular monthly installment amount> | null,
+              "term_months": <integer, total number of months / installments, e.g. 18> | null,
               "remaining_months": <integer, remaining installments left if shown> | null,
-              "stated_interest_rate": "<raw printed interest rate string, e.g. 12%, 1.2%/tháng, 0%>" | null,
-              "stated_apr": <float annual percentage rate e.g. 12.0, or null if not annual or unstated> | null,
+              "stated_interest_rate": "<raw printed interest rate string, e.g. 1.72%/tháng, 12%/năm, 0%>" | null,
+              "stated_apr": <float annual percentage rate e.g. 20.64 for 1.72%/tháng (1.72 * 12), 12.0 for 12%/năm, 0.0 for 0%> | null,
               "due_day_of_month": <integer day 1-31> | null,
               "due_date": "YYYY-MM-DD" | null,
               "statement_date": "YYYY-MM-DD" | null,
               "is_payment_slip": <true if this image is a payment transfer confirmation paying down debt, false otherwise>,
               "payment_amount": <integer in VND paid, or null if not a payment slip>,
-              "note": "<brief details, e.g. contract number or account number last 4 digits>" | null,
+              "note": "<brief details, e.g. contract number or disbursement date>" | null,
               "confidence": <float 0.0 to 1.0>
             }
             
             Strict Vietnamese Banking & Entity Rules:
-            - Amounts MUST be integers in VND without commas or decimal points. E.g. "24.000.000 đ" -> 24000000.
+            - Amounts MUST be integers in VND without commas or decimal points. E.g. "40.000.000 đ" -> 40000000.
+            - Total Loan Amount vs Current Balance:
+              * "Số tiền vay" / "Tổng tiền giải ngân" = original_principal (e.g. 40000000).
+              * "Dư nợ còn lại" / "Dư nợ gốc hiện tại" = current_principal (e.g. 30964757).
             - "Hạn mức tín dụng" (Credit Limit) is NOT the principal balance. Extract "Dư nợ hiện tại" / "Dư nợ kỳ này" (Statement Balance) as current_principal.
-            - "Số tiền thanh toán tối thiểu" -> monthly_payment (for credit cards).
+            - Monthly Payment:
+              * If the screen says "Số tiền cần trả: 0 VND (Đã thanh toán)" or shows 0 because current month is settled, do NOT set monthly_payment to 0! Look for the regular contractual installment (Số tiền trả mỗi kỳ), or leave monthly_payment as null.
+            - Interest Rate:
+              * If interest is quoted per month (e.g. "1.72%/tháng", "1.72%/month"), preserve in stated_interest_rate AND calculate stated_apr by multiplying by 12 (e.g. 1.72 * 12 = 20.64).
             - "Ngày đến hạn thanh toán" -> due_date and due_day_of_month.
-            - If interest rate is stated per month (e.g. "1.5%/tháng"), preserve in stated_interest_rate, do NOT calculate APR yourself (Java will calculate it).
-            - For BNPL (0% installment): debt_type = "INSTALLMENT_BNPL".
-            - For Credit Card statements: debt_type = "REVOLVING_CREDIT".
             - Return ONLY the JSON object, no markdown codeblocks, no explanations.
             """;
 
