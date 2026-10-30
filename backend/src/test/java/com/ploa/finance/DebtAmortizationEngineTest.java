@@ -3,6 +3,7 @@ package com.ploa.finance;
 import com.ploa.finance.engine.DebtAmortizationEngine;
 import com.ploa.finance.engine.dto.DebtAmortizationResult;
 import com.ploa.finance.engine.dto.PayoffSimulationComparison;
+import com.ploa.finance.engine.dto.AprAnalysisResult;
 import com.ploa.finance.engine.dto.PayoffStrategy;
 import com.ploa.finance.model.Debt;
 import com.ploa.finance.model.DebtStatus;
@@ -179,4 +180,52 @@ class DebtAmortizationEngineTest {
 
         assertThat(smallDebtDetail.monthsToPayoff()).isLessThanOrEqualTo(2);
     }
+
+    @Test
+    @DisplayName("Should derive 0% effective APR for 0% BNPL installment")
+    void testDeriveZeroAprForBnpl() {
+        BigDecimal principal = BigDecimal.valueOf(24_000_000);
+        BigDecimal monthlyPayment = BigDecimal.valueOf(2_000_000);
+        int months = 12;
+
+        BigDecimal apr = engine.calculateEffectiveApr(principal, monthlyPayment, months);
+        assertThat(apr).isEqualByComparingTo(BigDecimal.ZERO);
+
+        AprAnalysisResult analysis = engine.analyzeApr(principal, monthlyPayment, months, null);
+        assertThat(analysis.isZeroInterest()).isTrue();
+        assertThat(analysis.method()).isEqualTo("ZERO_BNPL");
+    }
+
+    @Test
+    @DisplayName("Should derive accurate 12.0% APR from annuity monthly payment")
+    void testDerive12PercentAprFromAnnuity() {
+        BigDecimal principal = BigDecimal.valueOf(36_000_000);
+        BigDecimal monthlyPayment = BigDecimal.valueOf(3_198_556.39);
+        int months = 12;
+
+        BigDecimal apr = engine.calculateEffectiveApr(principal, monthlyPayment, months);
+        assertThat(apr).isBetween(BigDecimal.valueOf(11.95), BigDecimal.valueOf(12.05));
+
+        AprAnalysisResult analysis = engine.analyzeApr(principal, monthlyPayment, months, BigDecimal.valueOf(12.0));
+        assertThat(analysis.method()).isEqualTo("EXPLICIT_VERIFIED");
+    }
+
+    @Test
+    @DisplayName("Should expose deceptive flat rate and compute true effective declining APR")
+    void testExposeFlatRateTrap() {
+        BigDecimal principal = BigDecimal.valueOf(24_000_000);
+        BigDecimal monthlyPayment = BigDecimal.valueOf(2_200_000);
+        int months = 12;
+
+        BigDecimal flatApr = engine.calculateFlatRateApr(principal, monthlyPayment, months);
+        assertThat(flatApr).isEqualByComparingTo(BigDecimal.valueOf(10.00));
+
+        BigDecimal effectiveApr = engine.calculateEffectiveApr(principal, monthlyPayment, months);
+        assertThat(effectiveApr).isBetween(BigDecimal.valueOf(17.8), BigDecimal.valueOf(18.2));
+
+        AprAnalysisResult analysis = engine.analyzeApr(principal, monthlyPayment, months, BigDecimal.valueOf(10.0));
+        assertThat(analysis.method()).isEqualTo("FLAT_RATE_EXPOSED");
+        assertThat(analysis.explanation()).contains("FLAT interest");
+    }
+
 }

@@ -50,6 +50,139 @@ public class DebtAmortizationEngine {
     }
 
     /**
+     * Numerically solves for the true effective APR using Internal Rate of Return (IRR) via Newton-Raphson.
+     * Given Principal (L), Monthly Payment (P), and Number of Months (n):
+     * Solves: (P/r) * [1 - (1+r)^(-n)] - L = 0
+     * Returns true effective APR in percent (e.g. 17.88 for 17.88%).
+     */
+    public BigDecimal calculateEffectiveApr(BigDecimal principal, BigDecimal monthlyPayment, int totalMonths) {
+        if (principal == null || monthlyPayment == null || totalMonths <= 0) {
+            return BigDecimal.ZERO.setScale(2, RoundingMode.HALF_UP);
+        }
+
+        double L = principal.doubleValue();
+        double P = monthlyPayment.doubleValue();
+        int n = totalMonths;
+
+        if (L <= 0 || P <= 0) {
+            return BigDecimal.ZERO.setScale(2, RoundingMode.HALF_UP);
+        }
+
+        // Zero-interest check (e.g. 0% BNPL / installment)
+        if (P * n <= L + 1.0) {
+            return BigDecimal.ZERO.setScale(2, RoundingMode.HALF_UP);
+        }
+
+        // Initial guess based on average balance approximation
+        double r = 2.0 * (P * n - L) / (L * (n + 1));
+        if (r <= 0.0) r = 0.01;
+
+        for (int i = 0; i < 60; i++) {
+            double term = Math.pow(1.0 + r, -n);
+            double g = (P / r) * (1.0 - term) - L;
+            double gPrime = -P / (r * r) * (1.0 - term) + (P * n / r) * Math.pow(1.0 + r, -n - 1);
+
+            if (Math.abs(gPrime) < 1e-12) {
+                break;
+            }
+
+            double diff = g / gPrime;
+            r = r - diff;
+
+            if (r <= 0.0) {
+                r = 1e-6;
+            }
+
+            if (Math.abs(diff) < 1e-8) {
+                break;
+            }
+        }
+
+        double aprPercent = r * 12.0 * 100.0;
+        return BigDecimal.valueOf(aprPercent).setScale(2, RoundingMode.HALF_UP);
+    }
+
+    /**
+     * Calculates the stated Flat Interest Rate APR (Lãi suất phẳng / năm).
+     * Formula: Flat APR = [(Total Payments - Principal) / Principal] * (12 / n) * 100%
+     */
+    public BigDecimal calculateFlatRateApr(BigDecimal principal, BigDecimal monthlyPayment, int totalMonths) {
+        if (principal == null || monthlyPayment == null || totalMonths <= 0) {
+            return BigDecimal.ZERO.setScale(2, RoundingMode.HALF_UP);
+        }
+
+        double L = principal.doubleValue();
+        double P = monthlyPayment.doubleValue();
+        int n = totalMonths;
+
+        if (L <= 0 || P * n <= L) {
+            return BigDecimal.ZERO.setScale(2, RoundingMode.HALF_UP);
+        }
+
+        double flatAprPercent = ((P * n - L) / L) * (12.0 / n) * 100.0;
+        return BigDecimal.valueOf(flatAprPercent).setScale(2, RoundingMode.HALF_UP);
+    }
+
+    /**
+     * Analyzes loan terms, resolving missing APR, verifying stated rates, or exposing flat rate traps.
+     */
+    public AprAnalysisResult analyzeApr(BigDecimal principal, BigDecimal monthlyPayment, int totalMonths, BigDecimal statedApr) {
+        if (principal == null || monthlyPayment == null || totalMonths <= 0) {
+            return new AprAnalysisResult(BigDecimal.ZERO, BigDecimal.ZERO, true, "INSUFFICIENT_DATA", "Insufficient loan terms to calculate APR");
+        }
+
+        double L = principal.doubleValue();
+        double P = monthlyPayment.doubleValue();
+        int n = totalMonths;
+
+        if (P * n <= L + 1.0) {
+            return new AprAnalysisResult(
+                    BigDecimal.ZERO.setScale(2, RoundingMode.HALF_UP),
+                    BigDecimal.ZERO.setScale(2, RoundingMode.HALF_UP),
+                    true,
+                    "ZERO_BNPL",
+                    "0% interest rate (Total payments equal principal borrowed)"
+            );
+        }
+
+        BigDecimal derivedEffectiveApr = calculateEffectiveApr(principal, monthlyPayment, totalMonths);
+        BigDecimal flatApr = calculateFlatRateApr(principal, monthlyPayment, totalMonths);
+
+        if (statedApr != null && statedApr.compareTo(BigDecimal.ZERO) > 0) {
+            BigDecimal normalizedStated = statedApr.compareTo(BigDecimal.ONE) > 0
+                    ? statedApr.setScale(2, RoundingMode.HALF_UP)
+                    : statedApr.multiply(BigDecimal.valueOf(100)).setScale(2, RoundingMode.HALF_UP);
+
+            if (normalizedStated.subtract(derivedEffectiveApr).abs().compareTo(BigDecimal.valueOf(0.5)) <= 0) {
+                return new AprAnalysisResult(
+                        normalizedStated,
+                        flatApr,
+                        false,
+                        "EXPLICIT_VERIFIED",
+                        String.format("Verified declining-balance APR of %s%% matches annuity payment", normalizedStated)
+                );
+            } else if (normalizedStated.subtract(flatApr).abs().compareTo(BigDecimal.valueOf(0.5)) <= 0) {
+                return new AprAnalysisResult(
+                        derivedEffectiveApr,
+                        flatApr,
+                        false,
+                        "FLAT_RATE_EXPOSED",
+                        String.format("Stated rate of %s%% is FLAT interest; true effective declining APR is %s%%", normalizedStated, derivedEffectiveApr)
+                );
+            }
+        }
+
+        return new AprAnalysisResult(
+                derivedEffectiveApr,
+                flatApr,
+                false,
+                "DERIVED_IRR",
+                String.format("Derived true effective APR of %s%% from %d monthly payments of %s VND (Stated flat rate: %s%%)",
+                        derivedEffectiveApr, n, monthlyPayment, flatApr)
+        );
+    }
+
+    /**
      * Generates the deterministic contractual amortization schedule for a given debt.
      */
     public DebtAmortizationResult generateSchedule(Debt debt, LocalDate asOfDate) {

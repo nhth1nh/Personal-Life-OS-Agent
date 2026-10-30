@@ -2,6 +2,7 @@ package com.ploa.ai;
 
 import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.ploa.ai.dto.DebtOcrResult;
 import com.ploa.ai.dto.OcrResult;
 import com.ploa.ai.util.ImageOptimizer;
 import org.slf4j.Logger;
@@ -83,6 +84,43 @@ public class VisionOcrService {
             - Bills/Rent/Subscriptions/Utilities = FIXED. Everything else = DISCRETIONARY.
             - If the image is a bank loan schedule, credit card statement, or BNPL contract: document_type = 'BANK_STATEMENT_DEBT', category = 'Debt Repayment', spend_type = 'FIXED', merchant = lender name.
             - Return ONLY the JSON object, no markdown.
+            """;
+
+    private static final String DEBT_OCR_SYSTEM_PROMPT = """
+            You are a strict financial debt and statement extraction engine. Extract debt obligation data from the provided image.
+            The image can be a bank loan contract, credit card statement, BNPL schedule (Shopee/HomeCredit/Apple), or debt repayment slip.
+            
+            Return ONLY a valid JSON object with these fields (use null for missing values):
+            {
+              "document_type": "AMORTIZING_LOAN_CONTRACT" | "CREDIT_CARD_STATEMENT" | "BNPL_SCHEDULE" | "DEBT_PAYMENT_SLIP" | "UNKNOWN",
+              "creditor": "<Bank or lender name, e.g. Shinhan Bank, VPBank, Techcombank, FE Credit, Apple/VPBank, Shopee SPayLater>" | null,
+              "debt_name": "<Descriptive name, e.g. Consumer Loan, VPBank StepUp Visa, iPhone 16 Installment>" | null,
+              "debt_type": "AMORTIZING_LOAN" | "REVOLVING_CREDIT" | "INSTALLMENT_BNPL" | "PEER_DEBT",
+              "original_principal": <integer in VND, total borrowed or original loan amount> | null,
+              "current_principal": <integer in VND, current outstanding balance or statement balance> | null,
+              "monthly_payment": <integer in VND, regular monthly installment or minimum payment due> | null,
+              "term_months": <integer, total number of months / installments> | null,
+              "remaining_months": <integer, remaining installments left if shown> | null,
+              "stated_interest_rate": "<raw printed interest rate string, e.g. 12%, 1.2%/tháng, 0%>" | null,
+              "stated_apr": <float annual percentage rate e.g. 12.0, or null if not annual or unstated> | null,
+              "due_day_of_month": <integer day 1-31> | null,
+              "due_date": "YYYY-MM-DD" | null,
+              "statement_date": "YYYY-MM-DD" | null,
+              "is_payment_slip": <true if this image is a payment transfer confirmation paying down debt, false otherwise>,
+              "payment_amount": <integer in VND paid, or null if not a payment slip>,
+              "note": "<brief details, e.g. contract number or account number last 4 digits>" | null,
+              "confidence": <float 0.0 to 1.0>
+            }
+            
+            Strict Vietnamese Banking & Entity Rules:
+            - Amounts MUST be integers in VND without commas or decimal points. E.g. "24.000.000 đ" -> 24000000.
+            - "Hạn mức tín dụng" (Credit Limit) is NOT the principal balance. Extract "Dư nợ hiện tại" / "Dư nợ kỳ này" (Statement Balance) as current_principal.
+            - "Số tiền thanh toán tối thiểu" -> monthly_payment (for credit cards).
+            - "Ngày đến hạn thanh toán" -> due_date and due_day_of_month.
+            - If interest rate is stated per month (e.g. "1.5%/tháng"), preserve in stated_interest_rate, do NOT calculate APR yourself (Java will calculate it).
+            - For BNPL (0% installment): debt_type = "INSTALLMENT_BNPL".
+            - For Credit Card statements: debt_type = "REVOLVING_CREDIT".
+            - Return ONLY the JSON object, no markdown codeblocks, no explanations.
             """;
 
     private final ChatClient chatClient;
@@ -276,4 +314,57 @@ public class VisionOcrService {
                     "VND", "Other", "DISCRETIONARY", null, text, 0.0, null);
         }
     }
+    /**
+     * Extract structured debt terms, credit card statement balances, or loan schedules from an image.
+     */
+    public DebtOcrResult extractDebtFromImage(byte[] imageBytes, String mimeType) {
+        log.info("Running Vision Debt OCR on image bytes (size: {} bytes, mime: {})",
+                imageBytes != null ? imageBytes.length : 0, mimeType);
+        if (imageBytes == null || imageBytes.length == 0) {
+            log.warn("Empty image bytes provided to Vision Debt OCR");
+            return fallbackDebtResult("Empty image");
+        }
+        try {
+            byte[] processedBytes = imageOptimizer.optimizeForOcr(imageBytes, mimeType);
+            MimeType type = (mimeType != null && !mimeType.isBlank())
+                    ? MimeTypeUtils.parseMimeType(mimeType)
+                    : MimeTypeUtils.IMAGE_JPEG;
+            Media media = new Media(type, new ByteArrayResource(processedBytes));
+            return executeDebtOcr(media);
+        } catch (Exception e) {
+            log.error("Debt OCR extraction failed: {}", e.getMessage(), e);
+            return fallbackDebtResult("Debt OCR failed: " + e.getMessage());
+        }
+    }
+
+    private DebtOcrResult executeDebtOcr(Media media) throws Exception {
+        UserMessage userMessage = UserMessage.builder()
+                .text("Extract the debt contract, credit card statement, or repayment slip from this image.\n\n" +
+                        temporalContext.getFormattedPromptContext() +
+                        "\nNote: Resolve relative dates using the current temporal context above.")
+                .media(media)
+                .build();
+
+        String raw = chatClient.prompt()
+                .advisors(a -> a.param("operation", "ocr_debt"))
+                .system(DEBT_OCR_SYSTEM_PROMPT)
+                .messages(userMessage)
+                .call()
+                .content();
+
+        log.debug("Debt OCR raw response: {}", raw);
+
+        String json = raw != null ? raw.strip() : "{}";
+        if (json.startsWith("```")) {
+            json = json.replaceFirst("```[a-z]*\\n?", "").replaceAll("```$", "").strip();
+        }
+
+        return MAPPER.readValue(json, DebtOcrResult.class);
+    }
+
+    private DebtOcrResult fallbackDebtResult(String note) {
+        return new DebtOcrResult("UNKNOWN", null, null, null, null, null, null,
+                null, null, null, null, null, null, null, false, null, note, 0.0);
+    }
+
 }

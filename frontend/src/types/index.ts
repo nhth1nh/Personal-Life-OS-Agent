@@ -248,3 +248,82 @@ export interface PayoffSimulationComparison {
   snowballInterestSaved: number;
   snowballMonthsSaved: number;
 }
+
+export interface AprAnalysisResult {
+  effectiveApr: number;
+  flatApr: number;
+  isZeroInterest: boolean;
+  method: string;
+  explanation: string;
+}
+
+export interface DebtOcrResult {
+  document_type?: string;
+  documentType?: string;
+  creditor: string | null;
+  debt_name?: string | null;
+  debtName?: string | null;
+  debt_type?: 'AMORTIZING_LOAN' | 'REVOLVING_CREDIT' | 'INSTALLMENT_BNPL' | 'PEER_DEBT';
+  debtType?: 'AMORTIZING_LOAN' | 'REVOLVING_CREDIT' | 'INSTALLMENT_BNPL' | 'PEER_DEBT';
+  original_principal?: number | null;
+  originalPrincipal?: number | null;
+  current_principal?: number | null;
+  currentPrincipal?: number | null;
+  monthly_payment?: number | null;
+  monthlyPayment?: number | null;
+  term_months?: number | null;
+  termMonths?: number | null;
+  remaining_months?: number | null;
+  remainingMonths?: number | null;
+  stated_interest_rate?: string | null;
+  statedInterestRate?: string | null;
+  stated_apr?: number | null;
+  statedApr?: number | null;
+  due_day_of_month?: number | null;
+  dueDayOfMonth?: number | null;
+  due_date?: string | null;
+  dueDate?: string | null;
+  statement_date?: string | null;
+  statementDate?: string | null;
+  is_payment_slip?: boolean;
+  isPaymentSlip?: boolean;
+  payment_amount?: number | null;
+  paymentAmount?: number | null;
+  note?: string | null;
+  confidence?: number;
+}
+
+export interface DebtScanPreviewResponse {
+  rawOcr: DebtOcrResult;
+  aprAnalysis: AprAnalysisResult;
+  matchedDebtId: string | null;
+  matchedDebtName: string | null;
+  action: 'CREATE_NEW_DEBT' | 'UPDATE_DEBT_BALANCE' | 'RECORD_DEBT_PAYMENT';
+  recommendedName: string;
+  recommendedCreditor: string;
+  recommendedDebtType: 'AMORTIZING_LOAN' | 'REVOLVING_CREDIT' | 'INSTALLMENT_BNPL' | 'PEER_DEBT';
+  recommendedPrincipal: number;
+  recommendedApr: number;
+  recommendedMonthlyDue: number;
+  recommendedDueDay: number;
+  recommendedDueDate: string | null;
+  recommendedMaturityDate: string | null;
+  validationStatus: string;
+  message: string;
+}
+
+export interface ConfirmDebtScanRequest {
+  action: 'CREATE_NEW_DEBT' | 'UPDATE_DEBT_BALANCE' | 'RECORD_DEBT_PAYMENT';
+  debtId?: string | null;
+  name: string;
+  creditor: string;
+  debtType: 'AMORTIZING_LOAN' | 'REVOLVING_CREDIT' | 'INSTALLMENT_BNPL' | 'PEER_DEBT';
+  principal: number;
+  apr: number;
+  monthlyDue: number;
+  dueDayOfMonth: number;
+  dueDate?: string | null;
+  maturityDate?: string | null;
+  paymentAmount?: number | null;
+  notes?: string | null;
+}

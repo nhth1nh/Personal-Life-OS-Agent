@@ -1,5 +1,7 @@
 package com.ploa.finance;
 
+import com.ploa.ai.dto.DebtOcrResult;
+import com.ploa.finance.api.dto.*;
 import com.ploa.finance.api.dto.CreateDebtRequest;
 import com.ploa.finance.api.dto.RecordDebtPaymentRequest;
 import com.ploa.finance.engine.DebtAmortizationEngine;
@@ -183,4 +185,120 @@ class DebtServiceTest {
         assertThat(debt.getCurrentPrincipal()).isEqualByComparingTo(BigDecimal.ZERO);
         assertThat(debt.getStatus()).isEqualTo(DebtStatus.PAID_OFF);
     }
+
+    @Test
+    @DisplayName("Should preview OCR debt scan and derive true effective APR via IRR when unstated")
+    void testPreviewDebtScanNewLoanWithDerivedApr() {
+        when(debtRepo.findByStatusOrderByMaturityDateAsc(DebtStatus.ACTIVE)).thenReturn(List.of());
+
+        DebtOcrResult ocr = new DebtOcrResult(
+                "AMORTIZING_LOAN_CONTRACT",
+                "Shinhan Bank",
+                "Consumer Loan",
+                DebtType.AMORTIZING_LOAN,
+                24_000_000L,
+                24_000_000L,
+                2_200_000L,
+                12,
+                12,
+                "10% flat",
+                null,
+                5,
+                LocalDate.of(2026, 11, 5),
+                LocalDate.of(2026, 10, 1),
+                false,
+                null,
+                "Contract #1234",
+                0.95
+        );
+
+        DebtScanPreviewResponse preview = debtService.previewDebtScan(ocr);
+
+        assertThat(preview.action()).isEqualTo(ReconciliationAction.CREATE_NEW_DEBT);
+        assertThat(preview.recommendedPrincipal()).isEqualByComparingTo(BigDecimal.valueOf(24_000_000));
+        assertThat(preview.recommendedApr()).isBetween(BigDecimal.valueOf(17.8), BigDecimal.valueOf(18.2));
+        assertThat(preview.aprAnalysis().method()).isEqualTo("DERIVED_IRR");
+        assertThat(preview.recommendedDueDay()).isEqualTo(5);
+    }
+
+    @Test
+    @DisplayName("Should match active credit card statement and recommend balance update")
+    void testPreviewDebtScanMatchedCreditCardUpdate() {
+        UUID cardId = UUID.randomUUID();
+        Debt existingCard = new Debt();
+        existingCard.setId(cardId);
+        existingCard.setName("VPBank StepUp Visa");
+        existingCard.setCreditor("VPBank");
+        existingCard.setDebtType(DebtType.REVOLVING_CREDIT);
+        existingCard.setCurrentPrincipal(BigDecimal.valueOf(5_000_000));
+        existingCard.setStatus(DebtStatus.ACTIVE);
+
+        when(debtRepo.findByStatusOrderByMaturityDateAsc(DebtStatus.ACTIVE)).thenReturn(List.of(existingCard));
+
+        DebtOcrResult ocr = new DebtOcrResult(
+                "CREDIT_CARD_STATEMENT",
+                "VPBank",
+                "VPBank Visa",
+                DebtType.REVOLVING_CREDIT,
+                null,
+                15_200_000L, // new statement balance
+                760_000L,    // minimum payment
+                null,
+                null,
+                "28%/năm",
+                28.0,
+                25,
+                LocalDate.of(2026, 11, 25),
+                LocalDate.of(2026, 10, 20),
+                false,
+                null,
+                "Statement Oct 2026",
+                0.98
+        );
+
+        DebtScanPreviewResponse preview = debtService.previewDebtScan(ocr);
+
+        assertThat(preview.action()).isEqualTo(ReconciliationAction.UPDATE_DEBT_BALANCE);
+        assertThat(preview.matchedDebtId()).isEqualTo(cardId);
+        assertThat(preview.recommendedPrincipal()).isEqualByComparingTo(BigDecimal.valueOf(15_200_000));
+        assertThat(preview.recommendedMonthlyDue()).isEqualByComparingTo(BigDecimal.valueOf(760_000));
+    }
+
+    @Test
+    @DisplayName("Should confirm debt scan by updating active debt balance")
+    void testConfirmDebtScanUpdateBalance() {
+        UUID debtId = UUID.randomUUID();
+        Debt debt = new Debt();
+        debt.setId(debtId);
+        debt.setName("Credit Card");
+        debt.setCurrentPrincipal(BigDecimal.valueOf(5_000_000));
+        debt.setStatus(DebtStatus.ACTIVE);
+
+        when(debtRepo.findById(debtId)).thenReturn(Optional.of(debt));
+        when(debtRepo.save(any(Debt.class))).thenAnswer(i -> i.getArgument(0));
+
+        ConfirmDebtScanRequest req = new ConfirmDebtScanRequest(
+                ReconciliationAction.UPDATE_DEBT_BALANCE,
+                debtId,
+                null,
+                null,
+                null,
+                BigDecimal.valueOf(15_200_000),
+                null,
+                BigDecimal.valueOf(760_000),
+                25,
+                null,
+                null,
+                null,
+                "Updated via Oct statement scan"
+        );
+
+        Object result = debtService.confirmDebtScan(req);
+        assertThat(result).isInstanceOf(Debt.class);
+        Debt updated = (Debt) result;
+        assertThat(updated.getCurrentPrincipal()).isEqualByComparingTo(BigDecimal.valueOf(15_200_000));
+        assertThat(updated.getMonthlyMinimumDue()).isEqualByComparingTo(BigDecimal.valueOf(760_000));
+        assertThat(updated.getDueDayOfMonth()).isEqualTo(25);
+    }
+
 }

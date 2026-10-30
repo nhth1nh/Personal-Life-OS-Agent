@@ -9,7 +9,9 @@ import type {
   Debt,
   DebtSchedule,
   Income,
-  PayoffSimulationComparison
+  PayoffSimulationComparison,
+  DebtScanPreviewResponse,
+  ConfirmDebtScanRequest
 } from '../types';
 
 const API_BASE = '/api/v1';
@@ -213,6 +215,28 @@ export const api = {
     if (!res.ok) throw new Error(`OCR upload failed: ${res.statusText}`);
     return res.json();
   },
+
+  scanDebtDocument: async (file: File): Promise<DebtScanPreviewResponse> => {
+    const formData = new FormData();
+    formData.append('file', file);
+    const apiKey = getApiKey();
+    const res = await fetch(`${API_BASE}/finance/debts/ocr`, {
+      method: 'POST',
+      headers: {
+        'X-API-Key': apiKey,
+      },
+      body: formData,
+    });
+    if (!res.ok) throw new Error(`Debt OCR upload failed: ${res.statusText}`);
+    return res.json();
+  },
+
+  confirmDebtScan: (data: ConfirmDebtScanRequest) =>
+    request<any>('/finance/debts/ocr/confirm', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+    }),
 
   // Briefings
   getMorningBriefing: () => request<{ briefing: string }>('/briefing/morning/preview'),

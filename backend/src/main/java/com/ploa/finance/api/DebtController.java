@@ -6,7 +6,15 @@ import com.ploa.finance.engine.dto.PayoffSimulationComparison;
 import com.ploa.finance.model.Debt;
 import com.ploa.finance.model.DebtPayment;
 import com.ploa.finance.model.DebtSchedule;
+import com.ploa.ai.VisionOcrService;
+import com.ploa.ai.dto.DebtOcrResult;
+import com.ploa.finance.api.dto.ConfirmDebtScanRequest;
+import com.ploa.finance.api.dto.DebtScanPreviewResponse;
 import com.ploa.finance.service.DebtService;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
+import org.springframework.web.multipart.MultipartFile;
+import java.io.IOException;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
@@ -18,10 +26,13 @@ import java.util.UUID;
 @RequestMapping("/api/v1/finance/debts")
 public class DebtController {
 
+    private static final long MAX_OCR_FILE_SIZE = 10 * 1024 * 1024; // 10MB
     private final DebtService debtService;
+    private final VisionOcrService ocrService;
 
-    public DebtController(DebtService debtService) {
+    public DebtController(DebtService debtService, VisionOcrService ocrService) {
         this.debtService = debtService;
+        this.ocrService = ocrService;
     }
 
     @GetMapping
@@ -58,4 +69,32 @@ public class DebtController {
     ) {
         return ResponseEntity.ok(debtService.simulatePayoff(surplus));
     }
+
+    /**
+     * Upload loan schedule, bank statement, or repayment slip for OCR extraction and reconciliation preview.
+     */
+    @PostMapping(value = "/ocr", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public ResponseEntity<DebtScanPreviewResponse> parseDebtDocument(
+            @RequestParam("file") MultipartFile file
+    ) throws IOException {
+        if (file.isEmpty()) {
+            return ResponseEntity.badRequest().build();
+        }
+        if (file.getSize() > MAX_OCR_FILE_SIZE) {
+            return ResponseEntity.status(HttpStatus.PAYLOAD_TOO_LARGE).build();
+        }
+        String mimeType = file.getContentType() != null ? file.getContentType() : "image/jpeg";
+        DebtOcrResult ocr = ocrService.extractDebtFromImage(file.getBytes(), mimeType);
+        DebtScanPreviewResponse preview = debtService.previewDebtScan(ocr);
+        return ResponseEntity.ok(preview);
+    }
+
+    /**
+     * Confirms and applies a user-reviewed debt action (Creates, Updates Balance, or Records Payment).
+     */
+    @PostMapping("/ocr/confirm")
+    public ResponseEntity<Object> confirmDebtScan(@RequestBody ConfirmDebtScanRequest req) {
+        return ResponseEntity.ok(debtService.confirmDebtScan(req));
+    }
+
 }

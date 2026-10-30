@@ -7,7 +7,14 @@ import com.ploa.assistant.AssistantService;
 import com.ploa.briefing.BriefingOrchestrator;
 import com.ploa.config.PloaProperties;
 import com.ploa.finance.model.SpendType;
+import com.ploa.ai.dto.DebtOcrResult;
+import com.ploa.finance.api.dto.ConfirmDebtScanRequest;
+import com.ploa.finance.api.dto.DebtScanPreviewResponse;
+import com.ploa.finance.api.dto.ReconciliationAction;
 import com.ploa.finance.model.Transaction;
+import com.ploa.finance.service.DebtService;
+import org.telegram.telegrambots.meta.api.objects.replykeyboard.buttons.InlineKeyboardButton;
+import org.telegram.telegrambots.meta.api.objects.replykeyboard.buttons.InlineKeyboardRow;
 import com.ploa.finance.service.FinanceService;
 import com.ploa.health.service.HealthService;
 import com.ploa.profile.UserProfileService;
@@ -65,6 +72,8 @@ public class TelegramBotHandler implements SpringLongPollingBot, LongPollingUpda
     private final AssistantService assistantService;
     private final BotMessageFactory messageFactory;
     private final UserProfileService profileService;
+    private final DebtService debtService;
+    final java.util.Map<String, DebtScanPreviewResponse> pendingDebtScans = new java.util.concurrent.ConcurrentHashMap<>();
 
     record PendingImage(
             byte[] photoBytes,
@@ -84,6 +93,18 @@ public class TelegramBotHandler implements SpringLongPollingBot, LongPollingUpda
                                AssistantService assistantService,
                                BotMessageFactory messageFactory,
                                UserProfileService profileService) {
+        this(properties, ocrService, financeService, healthService, briefingOrchestrator, assistantService, messageFactory, profileService, null);
+    }
+
+    public TelegramBotHandler(PloaProperties properties,
+                               VisionOcrService ocrService,
+                               FinanceService financeService,
+                               HealthService healthService,
+                               BriefingOrchestrator briefingOrchestrator,
+                               AssistantService assistantService,
+                               BotMessageFactory messageFactory,
+                               UserProfileService profileService,
+                               DebtService debtService) {
         this.properties = properties;
         this.ocrService = ocrService;
         this.financeService = financeService;
@@ -92,6 +113,7 @@ public class TelegramBotHandler implements SpringLongPollingBot, LongPollingUpda
         this.assistantService = assistantService;
         this.messageFactory = messageFactory;
         this.profileService = profileService;
+        this.debtService = debtService;
         String token = (properties != null && properties.telegram() != null) ? properties.telegram().botToken() : null;
         this.telegramClient = (token != null && !token.isBlank())
                 ? new OkHttpTelegramClient(token)
@@ -229,6 +251,11 @@ public class TelegramBotHandler implements SpringLongPollingBot, LongPollingUpda
     private void processReceiptImage(long chatId, long msgId, byte[] photoBytes, String mimeType, String caption) throws TelegramApiException {
         String imageSha256 = computeSha256(photoBytes);
         OcrResult ocr = ocrService.extractFromImage(photoBytes, mimeType);
+
+        if (ocr != null && "BANK_STATEMENT_DEBT".equalsIgnoreCase(ocr.documentType())) {
+            processDebtImage(chatId, photoBytes, mimeType);
+            return;
+        }
 
         boolean isFinancialDocument = ocr != null
                 && ocr.totalAmount() != null
@@ -494,6 +521,12 @@ public class TelegramBotHandler implements SpringLongPollingBot, LongPollingUpda
             return;
         }
 
+        if (action.startsWith("DEBT_")) {
+            String scanId = parts.length > 1 ? parts[1] : "";
+            handleDebtCallback(chatId, msgId, action, scanId);
+            return;
+        }
+
         UUID txId = UUID.fromString(parts[1]);
 
         switch (action) {
@@ -712,4 +745,117 @@ public class TelegramBotHandler implements SpringLongPollingBot, LongPollingUpda
                     .build());
         }
     }
+
+    private void processDebtImage(long chatId, byte[] photoBytes, String mimeType) throws TelegramApiException {
+        if (debtService == null) {
+            log.warn("DebtService not configured; cannot process debt statement image");
+            sendText(chatId, "⚠️ Debt statement detected, but debt management service is offline.");
+            return;
+        }
+
+        DebtOcrResult debtOcr = ocrService.extractDebtFromImage(photoBytes, mimeType);
+        DebtScanPreviewResponse preview = debtService.previewDebtScan(debtOcr);
+
+        String scanId = UUID.randomUUID().toString();
+        pendingDebtScans.put(scanId, preview);
+
+        SendMessage card = buildDebtPreviewCard(chatId, preview, scanId);
+        telegramClient.execute(card);
+    }
+
+    private SendMessage buildDebtPreviewCard(long chatId, DebtScanPreviewResponse preview, String scanId) {
+        StringBuilder sb = new StringBuilder();
+        if (preview.action() == ReconciliationAction.RECORD_DEBT_PAYMENT) {
+            sb.append("💸 <b>Debt Repayment Slip Detected</b>\n\n");
+            sb.append("• <b>Lender:</b> ").append(preview.recommendedCreditor()).append("\n");
+            if (preview.matchedDebtName() != null) {
+                sb.append("• <b>Matched Debt:</b> ").append(preview.matchedDebtName()).append("\n");
+            }
+            sb.append("• <b>Amount Paid:</b> ").append(String.format("%,d VND", preview.recommendedPrincipal().longValue())).append("\n");
+        } else if (preview.action() == ReconciliationAction.UPDATE_DEBT_BALANCE) {
+            sb.append("💳 <b>Credit Card / Statement Balance Detected</b>\n\n");
+            sb.append("• <b>Lender:</b> ").append(preview.recommendedCreditor()).append("\n");
+            sb.append("• <b>Liability:</b> ").append(preview.recommendedName()).append("\n");
+            sb.append("• <b>Statement Balance:</b> ").append(String.format("%,d VND", preview.recommendedPrincipal().longValue())).append("\n");
+            sb.append("• <b>Minimum Due:</b> ").append(String.format("%,d VND", preview.recommendedMonthlyDue().longValue())).append("\n");
+            if (preview.recommendedDueDay() != null) {
+                sb.append("• <b>Due Day:</b> ").append(preview.recommendedDueDay()).append("th of month\n");
+            }
+        } else {
+            sb.append("🏦 <b>Loan / Debt Contract Detected</b>\n\n");
+            sb.append("• <b>Lender:</b> ").append(preview.recommendedCreditor()).append("\n");
+            sb.append("• <b>Product:</b> ").append(preview.recommendedName()).append("\n");
+            sb.append("• <b>Principal:</b> ").append(String.format("%,d VND", preview.recommendedPrincipal().longValue())).append("\n");
+            sb.append("• <b>Effective APR:</b> ").append(preview.recommendedApr()).append("%\n");
+            if (preview.aprAnalysis() != null && preview.aprAnalysis().explanation() != null) {
+                sb.append("• <i>").append(preview.aprAnalysis().explanation()).append("</i>\n");
+            }
+            sb.append("• <b>Monthly Payment:</b> ").append(String.format("%,d VND", preview.recommendedMonthlyDue().longValue())).append("\n");
+            if (preview.recommendedDueDay() != null) {
+                sb.append("• <b>Due Day:</b> ").append(preview.recommendedDueDay()).append("th of month\n");
+            }
+        }
+
+        sb.append("\n<i>Review details. Zero silent write. Tap below to confirm:</i>");
+
+        String btnLabel = preview.action() == ReconciliationAction.RECORD_DEBT_PAYMENT
+                ? "✅ Record Payment"
+                : (preview.action() == ReconciliationAction.UPDATE_DEBT_BALANCE ? "✅ Update Balance" : "✅ Register Debt");
+
+        InlineKeyboardButton confirmBtn = InlineKeyboardButton.builder()
+                .text(btnLabel)
+                .callbackData("DEBT_CONFIRM:" + scanId)
+                .build();
+
+        InlineKeyboardButton cancelBtn = InlineKeyboardButton.builder()
+                .text("❌ Discard")
+                .callbackData("DEBT_CANCEL:" + scanId)
+                .build();
+
+        InlineKeyboardMarkup markup = InlineKeyboardMarkup.builder()
+                .keyboardRow(new InlineKeyboardRow(confirmBtn, cancelBtn))
+                .build();
+
+        return SendMessage.builder()
+                .chatId(chatId)
+                .text(sb.toString())
+                .parseMode("HTML")
+                .replyMarkup(markup)
+                .build();
+    }
+
+    private void handleDebtCallback(long chatId, int promptMsgId, String action, String scanId) throws TelegramApiException {
+        DebtScanPreviewResponse preview = pendingDebtScans.remove(scanId);
+        if ("DEBT_CANCEL".equals(action)) {
+            editText(chatId, promptMsgId, "❌ Debt document discarded.");
+            return;
+        }
+        if (preview == null) {
+            editText(chatId, promptMsgId, "⚠️ Debt review session expired. Please re-upload.");
+            return;
+        }
+        if ("DEBT_CONFIRM".equals(action)) {
+            ConfirmDebtScanRequest req = new ConfirmDebtScanRequest(
+                    preview.action(),
+                    preview.matchedDebtId(),
+                    preview.recommendedName(),
+                    preview.recommendedCreditor(),
+                    preview.recommendedDebtType(),
+                    preview.recommendedPrincipal(),
+                    preview.recommendedApr(),
+                    preview.recommendedMonthlyDue(),
+                    preview.recommendedDueDay(),
+                    preview.recommendedDueDate(),
+                    preview.recommendedMaturityDate(),
+                    preview.recommendedPrincipal(),
+                    "Confirmed via Telegram Bot OCR"
+            );
+            debtService.confirmDebtScan(req);
+            String actionDone = preview.action() == ReconciliationAction.RECORD_DEBT_PAYMENT
+                    ? "Payment recorded"
+                    : (preview.action() == ReconciliationAction.UPDATE_DEBT_BALANCE ? "Balance updated" : "Debt registered");
+            editText(chatId, promptMsgId, "✅ <b>" + actionDone + " successfully!</b>\n" + preview.recommendedName() + " (" + String.format("%,d VND", preview.recommendedPrincipal().longValue()) + ")");
+        }
+    }
+
 }

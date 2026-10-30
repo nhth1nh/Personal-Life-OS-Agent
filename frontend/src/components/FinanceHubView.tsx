@@ -18,6 +18,8 @@ import {
   Sparkles,
   Zap,
   Layers,
+  UploadCloud,
+  FileText,
   X
 } from 'lucide-react';
 import { 
@@ -40,7 +42,8 @@ import type {
   Debt, 
   DebtSchedule, 
   Income, 
-  PayoffSimulationComparison 
+  PayoffSimulationComparison,
+  DebtScanPreviewResponse
 } from '../types';
 
 const CATEGORY_COLORS: { [key: string]: string } = {
@@ -83,6 +86,19 @@ export const FinanceHubView: React.FC = () => {
   const [showIncomeModal, setShowIncomeModal] = useState<boolean>(false);
   const [showDebtModal, setShowDebtModal] = useState<boolean>(false);
   const [showPaymentModal, setShowPaymentModal] = useState<boolean>(false);
+  const [scanningDebt, setScanningDebt] = useState<boolean>(false);
+  const [showDebtScanModal, setShowDebtScanModal] = useState<boolean>(false);
+  const [debtScanPreview, setDebtScanPreview] = useState<DebtScanPreviewResponse | null>(null);
+  const [debtScanForm, setDebtScanForm] = useState({
+    name: '',
+    creditor: '',
+    debtType: 'AMORTIZING_LOAN' as Debt['debtType'],
+    principal: '',
+    apr: '',
+    monthlyDue: '',
+    dueDayOfMonth: '5',
+    notes: ''
+  });
   const [paymentDebt, setPaymentDebt] = useState<Debt | null>(null);
 
   // Form states
@@ -207,6 +223,59 @@ export const FinanceHubView: React.FC = () => {
     }
   };
 
+  const handleDebtFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setScanningDebt(true);
+    try {
+      const preview = await api.scanDebtDocument(file);
+      setDebtScanPreview(preview);
+      setDebtScanForm({
+        name: preview.recommendedName || '',
+        creditor: preview.recommendedCreditor || '',
+        debtType: preview.recommendedDebtType || 'AMORTIZING_LOAN',
+        principal: preview.recommendedPrincipal ? String(preview.recommendedPrincipal) : '',
+        apr: preview.recommendedApr !== undefined ? String(preview.recommendedApr) : '',
+        monthlyDue: preview.recommendedMonthlyDue ? String(preview.recommendedMonthlyDue) : '',
+        dueDayOfMonth: preview.recommendedDueDay ? String(preview.recommendedDueDay) : '5',
+        notes: preview.rawOcr?.note || ''
+      });
+      setShowDebtScanModal(true);
+    } catch (err: any) {
+      alert(`Debt statement scan failed: ${err.message}`);
+    } finally {
+      setScanningDebt(false);
+      e.target.value = '';
+    }
+  };
+
+  const handleConfirmDebtScan = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!debtScanPreview) return;
+    try {
+      await api.confirmDebtScan({
+        action: debtScanPreview.action,
+        debtId: debtScanPreview.matchedDebtId,
+        name: debtScanForm.name,
+        creditor: debtScanForm.creditor,
+        debtType: debtScanForm.debtType,
+        principal: Number(debtScanForm.principal),
+        apr: Number(debtScanForm.apr),
+        monthlyDue: Number(debtScanForm.monthlyDue),
+        dueDayOfMonth: Number(debtScanForm.dueDayOfMonth),
+        dueDate: debtScanPreview.recommendedDueDate,
+        maturityDate: debtScanPreview.recommendedMaturityDate,
+        paymentAmount: Number(debtScanForm.principal),
+        notes: debtScanForm.notes
+      });
+      setShowDebtScanModal(false);
+      setDebtScanPreview(null);
+      loadAllData();
+    } catch (err: any) {
+      alert(`Failed to confirm debt: ${err.message}`);
+    }
+  };
+
   const handleRecordPayment = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!paymentDebt) return;
@@ -308,6 +377,18 @@ export const FinanceHubView: React.FC = () => {
             <Plus className="w-3.5 h-3.5" />
             <span>Debt</span>
           </button>
+
+          <label className="flex items-center space-x-1.5 px-3 py-1.5 rounded-xl bg-purple-500/10 hover:bg-purple-500/20 border border-purple-500/30 text-purple-300 text-xs font-semibold cursor-pointer transition-all">
+            <UploadCloud className={`w-3.5 h-3.5 ${scanningDebt ? 'animate-bounce text-purple-400' : ''}`} />
+            <span>{scanningDebt ? 'Scanning...' : 'Scan Statement'}</span>
+            <input
+              type="file"
+              accept="image/*,.pdf"
+              className="hidden"
+              disabled={scanningDebt}
+              onChange={handleDebtFileUpload}
+            />
+          </label>
 
           <button
             onClick={loadAllData}
@@ -1325,6 +1406,151 @@ export const FinanceHubView: React.FC = () => {
           </form>
         </div>
       )}
+
+      {/* ── MODAL: REVIEW SCANNED DEBT STATEMENT ───────────────────────── */}
+      {showDebtScanModal && debtScanPreview && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 backdrop-blur-sm p-4 overflow-y-auto">
+          <form onSubmit={handleConfirmDebtScan} className="bg-slate-900 border border-slate-800 rounded-3xl p-6 max-w-lg w-full space-y-4 my-8">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-800">
+              <div className="flex items-center space-x-2">
+                <FileText className="w-5 h-5 text-purple-400" />
+                <h3 className="font-bold text-white text-base">Review Scanned Statement</h3>
+              </div>
+              <button type="button" onClick={() => setShowDebtScanModal(false)} className="text-slate-400 hover:text-white">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Reconciliation Banner */}
+            <div className={`p-3 rounded-2xl text-xs border ${
+              debtScanPreview.action === 'UPDATE_DEBT_BALANCE'
+                ? 'bg-blue-500/10 border-blue-500/30 text-blue-300'
+                : debtScanPreview.action === 'RECORD_DEBT_PAYMENT'
+                ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-300'
+                : 'bg-purple-500/10 border-purple-500/30 text-purple-300'
+            }`}>
+              <div className="font-bold flex items-center justify-between">
+                <span>Action: {debtScanPreview.action.replace(/_/g, ' ')}</span>
+                <span className="text-[10px] uppercase px-2 py-0.5 rounded-full bg-slate-950 font-mono">
+                  {debtScanPreview.validationStatus}
+                </span>
+              </div>
+              <p className="mt-1 opacity-90">{debtScanPreview.message}</p>
+            </div>
+
+            {/* Mathematical APR Derivation Box */}
+            {debtScanPreview.aprAnalysis && (
+              <div className="p-3 bg-slate-950 border border-slate-800 rounded-2xl text-xs space-y-1">
+                <div className="flex items-center justify-between">
+                  <span className="text-slate-400">Deterministic APR Analysis</span>
+                  <span className="font-mono font-bold text-amber-400">
+                    {debtScanPreview.recommendedApr}% Effective APR
+                  </span>
+                </div>
+                <p className="text-[11px] text-slate-400">{debtScanPreview.aprAnalysis.explanation}</p>
+              </div>
+            )}
+
+            {/* Editable Fields */}
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="text-xs text-slate-400 block mb-1">Liability Name</label>
+                <input
+                  type="text"
+                  required
+                  value={debtScanForm.name}
+                  onChange={(e) => setDebtScanForm({ ...debtScanForm, name: e.target.value })}
+                  className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-slate-100 focus:outline-none focus:border-purple-500"
+                />
+              </div>
+
+              <div>
+                <label className="text-xs text-slate-400 block mb-1">Creditor / Bank</label>
+                <input
+                  type="text"
+                  required
+                  value={debtScanForm.creditor}
+                  onChange={(e) => setDebtScanForm({ ...debtScanForm, creditor: e.target.value })}
+                  className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-slate-100 focus:outline-none focus:border-purple-500"
+                />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="text-xs text-slate-400 block mb-1">Principal / Balance (VND)</label>
+                <input
+                  type="number"
+                  required
+                  value={debtScanForm.principal}
+                  onChange={(e) => setDebtScanForm({ ...debtScanForm, principal: e.target.value })}
+                  className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-slate-100 focus:outline-none focus:border-purple-500"
+                />
+              </div>
+
+              <div>
+                <label className="text-xs text-slate-400 block mb-1">Effective APR (%)</label>
+                <input
+                  type="number"
+                  step="0.01"
+                  required
+                  value={debtScanForm.apr}
+                  onChange={(e) => setDebtScanForm({ ...debtScanForm, apr: e.target.value })}
+                  className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-slate-100 focus:outline-none focus:border-purple-500"
+                />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="text-xs text-slate-400 block mb-1">Monthly Payment Due (VND)</label>
+                <input
+                  type="number"
+                  required
+                  value={debtScanForm.monthlyDue}
+                  onChange={(e) => setDebtScanForm({ ...debtScanForm, monthlyDue: e.target.value })}
+                  className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-slate-100 focus:outline-none focus:border-purple-500"
+                />
+              </div>
+
+              <div>
+                <label className="text-xs text-slate-400 block mb-1">Payment Due Day</label>
+                <input
+                  type="number"
+                  min="1"
+                  max="31"
+                  required
+                  value={debtScanForm.dueDayOfMonth}
+                  onChange={(e) => setDebtScanForm({ ...debtScanForm, dueDayOfMonth: e.target.value })}
+                  className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-slate-100 focus:outline-none focus:border-purple-500"
+                />
+              </div>
+            </div>
+
+            <div>
+              <label className="text-xs text-slate-400 block mb-1">Notes</label>
+              <input
+                type="text"
+                value={debtScanForm.notes}
+                onChange={(e) => setDebtScanForm({ ...debtScanForm, notes: e.target.value })}
+                className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-slate-100 focus:outline-none focus:border-purple-500"
+              />
+            </div>
+
+            <div className="pt-2">
+              <button
+                type="submit"
+                className="w-full py-2.5 rounded-xl bg-purple-600 hover:bg-purple-500 text-white font-semibold text-xs transition-all shadow-lg shadow-purple-600/20"
+              >
+                {debtScanPreview.action === 'RECORD_DEBT_PAYMENT'
+                  ? 'Confirm & Apply Payment'
+                  : (debtScanPreview.action === 'UPDATE_DEBT_BALANCE' ? 'Confirm & Update Balance' : 'Confirm & Register Debt')}
+              </button>
+            </div>
+          </form>
+        </div>
+      )}
+
     </div>
   );
 };
