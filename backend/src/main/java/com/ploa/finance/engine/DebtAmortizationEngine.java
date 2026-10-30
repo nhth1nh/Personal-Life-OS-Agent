@@ -164,6 +164,24 @@ public class DebtAmortizationEngine {
             );
         }
 
+        if (hasPositiveStatedRate && (P * n <= L + 1.0)) {
+            // Inconsistent payment: stated rate is positive, but provided payment only covers principal.
+            // Calculate true contractual installment and expose effective APR based on stated flat rate.
+            BigDecimal normalizedStated = statedApr.compareTo(BigDecimal.ONE) > 0
+                    ? statedApr.setScale(2, RoundingMode.HALF_UP)
+                    : statedApr.multiply(BigDecimal.valueOf(100)).setScale(2, RoundingMode.HALF_UP);
+            double monthlyRate = normalizedStated.doubleValue() / 12.0 / 100.0;
+            double flatPayment = (L / n) + (L * monthlyRate);
+            BigDecimal trueEffectiveApr = calculateEffectiveApr(principal, BigDecimal.valueOf(flatPayment), totalMonths);
+            return new AprAnalysisResult(
+                    trueEffectiveApr,
+                    normalizedStated,
+                    false,
+                    "FLAT_RATE_EXPOSED",
+                    String.format("Stated rate of %s%% is FLAT interest; true effective declining APR is %s%%", normalizedStated, trueEffectiveApr)
+            );
+        }
+
         BigDecimal derivedEffectiveApr = calculateEffectiveApr(principal, monthlyPayment, totalMonths);
         BigDecimal flatApr = calculateFlatRateApr(principal, monthlyPayment, totalMonths);
 

@@ -335,4 +335,40 @@ class DebtServiceTest {
         assertThat(preview.recommendedApr()).isGreaterThan(BigDecimal.valueOf(20.0));
         assertThat(preview.recommendedMonthlyDue()).isGreaterThan(BigDecimal.valueOf(2_500_000));
     }
+
+    @Test
+    @DisplayName("Should reconstruct 40m original principal and override hallucinated principal-only payment")
+    void testPreviewDebtScanReconstructOriginalPrincipalAndOverrideZeroPayment() {
+        DebtOcrResult ocr = new DebtOcrResult(
+                "AMORTIZING_LOAN_CONTRACT",
+                "VPBank",
+                "Vay tiền mặt trung hạn",
+                DebtType.AMORTIZING_LOAN,
+                null, // Original loan not on screen
+                30_964_757L, // Remaining balance
+                1_720_264L, // Hallucinated principal-only payment (30964757 / 18)
+                18,
+                null,
+                "1.72%/tháng",
+                20.64,
+                5,
+                LocalDate.of(2026, 11, 5),
+                LocalDate.of(2026, 5, 26),
+                LocalDate.of(2026, 10, 1),
+                false,
+                null,
+                "Ngày giải ngân 26/05/2026",
+                0.95
+        );
+
+        DebtScanPreviewResponse preview = debtService.previewDebtScan(ocr);
+
+        assertThat(preview.action()).isEqualTo(ReconciliationAction.CREATE_NEW_DEBT);
+        assertThat(preview.recommendedOriginalPrincipal()).isEqualByComparingTo(BigDecimal.valueOf(40_000_000));
+        assertThat(preview.recommendedPrincipal()).isEqualByComparingTo(BigDecimal.valueOf(30_964_757));
+        assertThat(preview.aprAnalysis().isZeroInterest()).isFalse();
+        assertThat(preview.aprAnalysis().method()).isEqualTo("FLAT_RATE_EXPOSED");
+        assertThat(preview.recommendedApr()).isBetween(BigDecimal.valueOf(35.0), BigDecimal.valueOf(37.0));
+        assertThat(preview.recommendedMonthlyDue()).isEqualByComparingTo(BigDecimal.valueOf(2_910_222));
+    }
 }

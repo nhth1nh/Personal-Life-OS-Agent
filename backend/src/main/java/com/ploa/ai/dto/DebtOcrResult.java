@@ -26,9 +26,38 @@ public record DebtOcrResult(
         @JsonProperty("stated_apr") @JsonAlias({"statedApr", "apr_annual"}) Double statedApr,
         @JsonProperty("due_day_of_month") @JsonAlias({"dueDayOfMonth", "due_day"}) Integer dueDayOfMonth,
         @JsonProperty("due_date") @JsonAlias({"dueDate", "payment_due_date", "ngay_den_han"}) LocalDate dueDate,
+        @JsonProperty("origination_date") @JsonAlias({"originationDate", "disbursement_date", "ngay_giai_ngan"}) LocalDate originationDate,
         @JsonProperty("statement_date") @JsonAlias({"statementDate", "ngay_sao_ke"}) LocalDate statementDate,
         @JsonProperty("is_payment_slip") @JsonAlias({"isPaymentSlip", "is_repayment"}) Boolean isPaymentSlip,
         @JsonProperty("payment_amount") @JsonAlias({"paymentAmount", "amount_paid"}) Long paymentAmount,
         @JsonProperty("note") String note,
         @JsonProperty("confidence") Double confidence
-) {}
+) {
+    /**
+     * Backwards-compatible convenience constructor without originationDate.
+     */
+    public DebtOcrResult(
+            String documentType,
+            String creditor,
+            String debtName,
+            DebtType debtType,
+            Long originalPrincipal,
+            Long currentPrincipal,
+            Long monthlyPayment,
+            Integer termMonths,
+            Integer remainingMonths,
+            String statedInterestRate,
+            Double statedApr,
+            Integer dueDayOfMonth,
+            LocalDate dueDate,
+            LocalDate statementDate,
+            Boolean isPaymentSlip,
+            Long paymentAmount,
+            String note,
+            Double confidence
+    ) {
+        this(documentType, creditor, debtName, debtType, originalPrincipal, currentPrincipal,
+                monthlyPayment, termMonths, remainingMonths, statedInterestRate, statedApr,
+                dueDayOfMonth, dueDate, null, statementDate, isPaymentSlip, paymentAmount, note, confidence);
+    }
+}

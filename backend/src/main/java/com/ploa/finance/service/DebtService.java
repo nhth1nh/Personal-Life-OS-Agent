@@ -265,6 +265,54 @@ public class DebtService {
         return null;
     }
 
+    /**
+     * Attempts to reconstruct the original loan principal if only current remaining balance is shown,
+     * using the origination/disbursement date, total term, and elapsed cycles.
+     */
+    public static BigDecimal deriveOriginalPrincipal(BigDecimal currentPrincipal, int termMonths, LocalDate originationDate, LocalDate statementDate, String note) {
+        if (currentPrincipal == null || currentPrincipal.compareTo(BigDecimal.ZERO) <= 0 || termMonths <= 1) {
+            return currentPrincipal;
+        }
+
+        LocalDate origDate = originationDate;
+        if (origDate == null && note != null) {
+            java.util.regex.Matcher m = java.util.regex.Pattern.compile("(\\d{1,2})[/-](\\d{1,2})[/-](\\d{4})").matcher(note);
+            if (m.find()) {
+                int d = Integer.parseInt(m.group(1));
+                int mo = Integer.parseInt(m.group(2));
+                int y = Integer.parseInt(m.group(3));
+                origDate = LocalDate.of(y, mo, d);
+            }
+        }
+
+        if (origDate == null) {
+            return currentPrincipal;
+        }
+
+        LocalDate refDate = statementDate != null ? statementDate : LocalDate.now(ZONE);
+        long elapsed = java.time.temporal.ChronoUnit.MONTHS.between(
+                java.time.YearMonth.from(origDate),
+                java.time.YearMonth.from(refDate)
+        );
+
+        if (elapsed <= 0 || elapsed >= termMonths) {
+            return currentPrincipal;
+        }
+
+        // Evaluate candidate elapsed cycles (e.g. elapsed or elapsed - 1 due to 1st payment delay)
+        for (long k : new long[]{elapsed - 1, elapsed, elapsed + 1}) {
+            if (k <= 0 || k >= termMonths) continue;
+            double remainingRatio = (double) (termMonths - k) / (double) termMonths;
+            double estL0 = currentPrincipal.doubleValue() / remainingRatio;
+            long roundedMillion = Math.round(estL0 / 1_000_000.0) * 1_000_000L;
+            if (Math.abs(estL0 - roundedMillion) <= 400_000.0) {
+                return BigDecimal.valueOf(roundedMillion);
+            }
+        }
+
+        return currentPrincipal;
+    }
+
     @Transactional(readOnly = true)
     public DebtScanPreviewResponse previewDebtScan(DebtOcrResult ocr) {
         if (ocr == null) {
@@ -286,25 +334,33 @@ public class DebtService {
                 ? currentPrincipal
                 : (originalPrincipal != null ? originalPrincipal : BigDecimal.ZERO);
 
+        int termMonths = ocr.termMonths() != null && ocr.termMonths() > 0
+                ? ocr.termMonths()
+                : (ocr.remainingMonths() != null && ocr.remainingMonths() > 0 ? ocr.remainingMonths() : 12);
+
         if (originalPrincipal == null) {
-            originalPrincipal = principal;
+            originalPrincipal = deriveOriginalPrincipal(principal, termMonths, ocr.originationDate(), ocr.statementDate(), ocr.note());
         }
 
         BigDecimal monthlyDue = ocr.monthlyPayment() != null
                 ? BigDecimal.valueOf(ocr.monthlyPayment())
                 : BigDecimal.ZERO;
 
-        int termMonths = ocr.termMonths() != null && ocr.termMonths() > 0
-                ? ocr.termMonths()
-                : (ocr.remainingMonths() != null && ocr.remainingMonths() > 0 ? ocr.remainingMonths() : 12);
-
         BigDecimal statedApr = parseStatedApr(ocr.statedInterestRate(), ocr.statedApr());
 
         // Base calculation on original borrowing principal for contract terms
         BigDecimal calculationPrincipal = originalPrincipal.compareTo(BigDecimal.ZERO) > 0 ? originalPrincipal : principal;
 
-        // Auto-calculate regular monthly installment if missing or settled for current period
-        if (monthlyDue.compareTo(BigDecimal.ZERO) <= 0 && calculationPrincipal.compareTo(BigDecimal.ZERO) > 0 && statedApr != null && statedApr.compareTo(BigDecimal.ZERO) > 0) {
+        // Guard against hallucinated principal-only division (P = L / n) when a positive interest rate is stated
+        boolean isHallucinatedZeroPayment = statedApr != null && statedApr.compareTo(BigDecimal.ZERO) > 0
+                && monthlyDue.compareTo(BigDecimal.ZERO) > 0
+                && (Math.abs(monthlyDue.doubleValue() * termMonths - principal.doubleValue()) <= 100.0
+                    || Math.abs(monthlyDue.doubleValue() * termMonths - calculationPrincipal.doubleValue()) <= 100.0);
+
+        // Auto-calculate regular monthly installment if missing, settled, or hallucinated as 0% interest
+        if ((monthlyDue.compareTo(BigDecimal.ZERO) <= 0 || isHallucinatedZeroPayment)
+                && calculationPrincipal.compareTo(BigDecimal.ZERO) > 0
+                && statedApr != null && statedApr.compareTo(BigDecimal.ZERO) > 0) {
             boolean isMonthlyQuoted = ocr.statedInterestRate() != null && ocr.statedInterestRate().toLowerCase().matches(".*(tháng|month|/m).*");
             if (isMonthlyQuoted) {
                 double monthlyRate = statedApr.doubleValue() / 12.0 / 100.0;
@@ -496,5 +552,4 @@ public class DebtService {
         }
         return null;
     }
-
 }

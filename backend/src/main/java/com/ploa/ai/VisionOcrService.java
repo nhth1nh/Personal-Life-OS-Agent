@@ -105,6 +105,7 @@ public class VisionOcrService {
               "stated_apr": <float annual percentage rate e.g. 20.64 for 1.72%/tháng (1.72 * 12), 12.0 for 12%/năm, 0.0 for 0%> | null,
               "due_day_of_month": <integer day 1-31> | null,
               "due_date": "YYYY-MM-DD" | null,
+              "origination_date": "YYYY-MM-DD" | null,
               "statement_date": "YYYY-MM-DD" | null,
               "is_payment_slip": <true if this image is a payment transfer confirmation paying down debt, false otherwise>,
               "payment_amount": <integer in VND paid, or null if not a payment slip>,
@@ -115,14 +116,20 @@ public class VisionOcrService {
             Strict Vietnamese Banking & Entity Rules:
             - Amounts MUST be integers in VND without commas or decimal points. E.g. "40.000.000 đ" -> 40000000.
             - Total Loan Amount vs Current Balance:
-              * "Số tiền vay" / "Tổng tiền giải ngân" = original_principal (e.g. 40000000).
+              * "Số tiền vay" / "Tổng tiền giải ngân" / "Hạn mức ban đầu" = original_principal (e.g. 40000000).
               * "Dư nợ còn lại" / "Dư nợ gốc hiện tại" = current_principal (e.g. 30964757).
+              * If only current outstanding balance is shown (e.g. after several months of repayment) and original total loan amount is not printed anywhere on the screen, set original_principal to null (the backend engine will reconstruct the original loan amount deterministically).
             - "Hạn mức tín dụng" (Credit Limit) is NOT the principal balance. Extract "Dư nợ hiện tại" / "Dư nợ kỳ này" (Statement Balance) as current_principal.
             - Monthly Payment:
-              * If the screen says "Số tiền cần trả: 0 VND (Đã thanh toán)" or shows 0 because current month is settled, do NOT set monthly_payment to 0! Look for the regular contractual installment (Số tiền trả mỗi kỳ), or leave monthly_payment as null.
+              * CRITICAL: NEVER divide current_principal by term_months to invent or calculate monthly_payment!
+              * ONLY extract monthly_payment if the regular monthly installment is explicitly printed as text on the screen (e.g. "Số tiền trả mỗi kỳ", "Số tiền trả hàng tháng").
+              * If the screen says "Số tiền cần trả: 0 VND (Đã thanh toán)" or current cycle is settled, do NOT set monthly_payment to 0 and do NOT invent a number: set monthly_payment to null.
             - Interest Rate:
               * If interest is quoted per month (e.g. "1.72%/tháng", "1.72%/month"), preserve in stated_interest_rate AND calculate stated_apr by multiplying by 12 (e.g. 1.72 * 12 = 20.64).
-            - "Ngày đến hạn thanh toán" -> due_date and due_day_of_month.
+            - Key Dates:
+              * "Ngày giải ngân" -> origination_date (e.g. 26/05/2026 -> 2026-05-26).
+              * "Kỳ tháng MM/YYYY" -> statement_date (e.g. Kỳ tháng 10/2026 -> 2026-10-01).
+              * "Ngày đến hạn thanh toán" -> due_date and due_day_of_month.
             - Return ONLY the JSON object, no markdown codeblocks, no explanations.
             """;
 
