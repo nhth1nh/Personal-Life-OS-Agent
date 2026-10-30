@@ -32,10 +32,6 @@ public record PloaProperties(
             String botUsername,
             String allowedChatIds
     ) {
-        public Telegram(String botToken, String botUsername, String allowedChatIds) {
-            this(true, botToken, botUsername, allowedChatIds);
-        }
-
         public List<Long> allowedChatIdList() {
             if (allowedChatIds == null || allowedChatIds.isBlank()) return List.of();
             return List.of(allowedChatIds.split(","))

@@ -18,7 +18,7 @@ class TelegramBotHandlerTest {
     void setUp() {
         PloaProperties properties = new PloaProperties(
                 null,
-                new PloaProperties.Telegram("", "", ""),
+                new PloaProperties.Telegram(true, "", "", ""),
                 null,
                 null
         );
@@ -82,7 +82,7 @@ class TelegramBotHandlerTest {
     void testIsAllowedEmptyFailsClosed() {
         PloaProperties emptyProps = new PloaProperties(
                 null,
-                new PloaProperties.Telegram("token", "user", ""),
+                new PloaProperties.Telegram(true, "token", "user", ""),
                 null,
                 null
         );
@@ -99,7 +99,7 @@ class TelegramBotHandlerTest {
     void testIsAllowedWithConfiguredWhitelist() {
         PloaProperties props = new PloaProperties(
                 null,
-                new PloaProperties.Telegram("token", "user", "123456789,999888777"),
+                new PloaProperties.Telegram(true, "token", "user", "123456789,999888777"),
                 null,
                 null
         );

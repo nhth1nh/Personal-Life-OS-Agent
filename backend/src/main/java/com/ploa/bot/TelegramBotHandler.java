@@ -21,6 +21,7 @@ import com.ploa.profile.UserProfileService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 import org.telegram.telegrambots.client.okhttp.OkHttpTelegramClient;
 import org.telegram.telegrambots.longpolling.interfaces.LongPollingUpdateConsumer;
@@ -96,6 +97,7 @@ public class TelegramBotHandler implements SpringLongPollingBot, LongPollingUpda
         this(properties, ocrService, financeService, healthService, briefingOrchestrator, assistantService, messageFactory, profileService, null);
     }
 
+    @Autowired
     public TelegramBotHandler(PloaProperties properties,
                                VisionOcrService ocrService,
                                FinanceService financeService,
@@ -114,16 +116,48 @@ public class TelegramBotHandler implements SpringLongPollingBot, LongPollingUpda
         this.messageFactory = messageFactory;
         this.profileService = profileService;
         this.debtService = debtService;
-        String token = (properties != null && properties.telegram() != null) ? properties.telegram().botToken() : null;
+        String token = resolveBotToken();
         this.telegramClient = (token != null && !token.isBlank())
                 ? new OkHttpTelegramClient(token)
                 : null;
     }
 
+    private String resolveBotToken() {
+        if (properties != null && properties.telegram() != null && properties.telegram().botToken() != null && !properties.telegram().botToken().isBlank()) {
+            return properties.telegram().botToken();
+        }
+        String envToken = System.getenv("TELEGRAM_BOT_TOKEN");
+        if (envToken != null && !envToken.isBlank()) {
+            return envToken;
+        }
+        return "";
+    }
+
+    List<Long> resolveAllowedChatIds() {
+        if (properties != null && properties.telegram() != null) {
+            List<Long> list = properties.telegram().allowedChatIdList();
+            if (list != null && !list.isEmpty()) {
+                return list;
+            }
+        }
+        String envIds = System.getenv("TELEGRAM_ALLOWED_CHAT_IDS");
+        if (envIds != null && !envIds.isBlank()) {
+            try {
+                return java.util.Arrays.stream(envIds.split(","))
+                        .map(String::trim)
+                        .filter(s -> !s.isBlank())
+                        .map(Long::parseLong)
+                        .toList();
+            } catch (Exception e) {
+                log.warn("Failed to parse TELEGRAM_ALLOWED_CHAT_IDS env: {}", envIds, e);
+            }
+        }
+        return List.of();
+    }
+
     @Override
     public String getBotToken() {
-        String token = (properties != null && properties.telegram() != null) ? properties.telegram().botToken() : null;
-        return token != null ? token : "";
+        return resolveBotToken();
     }
 
     @Override
@@ -697,8 +731,7 @@ public class TelegramBotHandler implements SpringLongPollingBot, LongPollingUpda
     }
 
     boolean isAllowed(long chatId) {
-        if (properties == null || properties.telegram() == null) return false;
-        List<Long> allowed = properties.telegram().allowedChatIdList();
+        List<Long> allowed = resolveAllowedChatIds();
         return !allowed.isEmpty() && allowed.contains(chatId);
     }
 
