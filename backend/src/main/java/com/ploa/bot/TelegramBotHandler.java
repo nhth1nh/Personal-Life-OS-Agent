@@ -266,14 +266,21 @@ public class TelegramBotHandler implements SpringLongPollingBot, LongPollingUpda
             return;
         }
 
-        // 2. Explicit financial/expense intent via caption
+        // 2. Explicit debt/statement intent via caption
+        if (isImageDebtIntent(caption)) {
+            sendText(chatId, "💳 *Analyzing debt statement & deriving true APR...*");
+            processDebtImage(chatId, photoBytes, mimeType);
+            return;
+        }
+
+        // 3. Explicit financial/expense intent via caption
         if (isImageExpenseIntent(caption)) {
             sendText(chatId, "🔍 Analyzing document...");
             processReceiptImage(chatId, msgId, photoBytes, mimeType, caption);
             return;
         }
 
-        // 3. Ambiguous or uncaptioned image: ask user intent via interactive inline keyboard
+        // 4. Ambiguous or uncaptioned image: ask user intent via interactive inline keyboard
         cleanupExpiredPendingImages();
         String pendingId = UUID.randomUUID().toString();
         pendingImages.put(pendingId, new PendingImage(photoBytes, mimeType, msgId, caption, java.time.Instant.now()));
@@ -322,10 +329,19 @@ public class TelegramBotHandler implements SpringLongPollingBot, LongPollingUpda
     boolean isImageChatIntent(String caption) {
         if (caption == null || caption.isBlank()) return false;
         String c = caption.trim().toLowerCase();
-        if (c.matches("(?i)^/(expense|pay|spend)\\b.*")) {
+        if (c.matches("(?i)^/(expense|pay|spend|debt|loan|saoke)\\b.*")) {
             return false;
         }
         return c.contains("?") || c.matches("(?i).*(what|how|why|should|can|could|is this|explain|help|calories?|workout|nutrition).*");
+    }
+
+    boolean isImageDebtIntent(String caption) {
+        if (caption == null || caption.isBlank()) return false;
+        String c = caption.trim().toLowerCase();
+        if (c.matches("(?i)^/(debt|loan|saoke)\\b.*")) {
+            return true;
+        }
+        return c.matches("(?i).*(debt|loan|statement|sao kê|hợp đồng vay|khoản vay|trả góp|thẻ tín dụng|dư nợ|tiền nợ).*");
     }
 
     boolean isImageExpenseIntent(String caption) {
@@ -333,6 +349,9 @@ public class TelegramBotHandler implements SpringLongPollingBot, LongPollingUpda
         String c = caption.trim().toLowerCase();
         if (c.matches("(?i)^/(expense|pay|spend)\\b.*")) {
             return true;
+        }
+        if (isImageDebtIntent(caption)) {
+            return false;
         }
         return c.matches("(?i).*(bill|receipt|invoice|hóa đơn|phiếu thu|chuyển khoản|thanh toán).*");
     }
@@ -612,8 +631,12 @@ public class TelegramBotHandler implements SpringLongPollingBot, LongPollingUpda
 
         switch (action) {
             case "IMG_RECEIPT" -> {
-                editText(chatId, promptMsgId, "🔍 <i>Analyzing document...</i>");
+                editText(chatId, promptMsgId, "🔍 <i>Analyzing receipt...</i>");
                 processReceiptImage(chatId, pending.originalMsgId(), pending.photoBytes(), pending.mimeType(), pending.caption());
+            }
+            case "IMG_DEBT" -> {
+                editText(chatId, promptMsgId, "💳 <i>Analyzing debt statement & deriving true APR...</i>");
+                processDebtImage(chatId, pending.photoBytes(), pending.mimeType());
             }
             case "IMG_CHAT" -> {
                 editText(chatId, promptMsgId, "🤔 <i>PLOA is analyzing your image...</i>");

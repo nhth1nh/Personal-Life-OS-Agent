@@ -146,8 +146,24 @@ class TelegramBotHandlerTest {
                 .isFalse();
     }
 
+    @ParameterizedTest
+    @ValueSource(strings = {
+            "/debt home loan statement",
+            "/loan VPBank 50tr",
+            "sao kê tài khoản tín dụng Techcombank",
+            "hợp đồng vay FE Credit",
+            "phiếu thanh toán trả góp",
+            "dư nợ thẻ tín dụng kỳ này"
+    })
+    @DisplayName("Captions explicitly indicating debt or bank statements should be detected as debt intent")
+    void testImageDebtIntentTrue(String caption) {
+        assertThat(handler.isImageDebtIntent(caption))
+                .as("Caption should be treated as debt intent: %s", caption)
+                .isTrue();
+    }
+
     @Test
-    @DisplayName("buildImageIntentMessage should generate 3 interactive buttons with correct callback data")
+    @DisplayName("buildImageIntentMessage should generate 4 interactive buttons with correct callback data")
     void testBuildImageIntentMessage() {
         BotMessageFactory factory = new BotMessageFactory();
         var msg = factory.buildImageIntentMessage(12345L, "test-uuid-123");
@@ -158,8 +174,9 @@ class TelegramBotHandlerTest {
         var rows = markup.getKeyboard();
         assertThat(rows).hasSize(2);
         assertThat(rows.get(0).get(0).getCallbackData()).isEqualTo("IMG_RECEIPT:test-uuid-123");
-        assertThat(rows.get(0).get(1).getCallbackData()).isEqualTo("IMG_CHAT:test-uuid-123");
-        assertThat(rows.get(1).get(0).getCallbackData()).isEqualTo("IMG_CANCEL:test-uuid-123");
+        assertThat(rows.get(0).get(1).getCallbackData()).isEqualTo("IMG_DEBT:test-uuid-123");
+        assertThat(rows.get(1).get(0).getCallbackData()).isEqualTo("IMG_CHAT:test-uuid-123");
+        assertThat(rows.get(1).get(1).getCallbackData()).isEqualTo("IMG_CANCEL:test-uuid-123");
     }
 
     @Test

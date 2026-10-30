@@ -82,15 +82,19 @@ public class BotMessageFactory {
         InlineKeyboardMarkup keyboard = InlineKeyboardMarkup.builder()
                 .keyboardRow(new InlineKeyboardRow(List.of(
                         InlineKeyboardButton.builder()
-                                .text("🧾 Log as Expense")
+                                .text("🧾 Log Expense")
                                 .callbackData("IMG_RECEIPT:" + pendingId)
                                 .build(),
                         InlineKeyboardButton.builder()
-                                .text("💬 Ask Assistant")
-                                .callbackData("IMG_CHAT:" + pendingId)
+                                .text("💳 Scan Debt / Statement")
+                                .callbackData("IMG_DEBT:" + pendingId)
                                 .build()
                 )))
                 .keyboardRow(new InlineKeyboardRow(List.of(
+                        InlineKeyboardButton.builder()
+                                .text("💬 Ask Assistant")
+                                .callbackData("IMG_CHAT:" + pendingId)
+                                .build(),
                         InlineKeyboardButton.builder()
                                 .text("❌ Cancel")
                                 .callbackData("IMG_CANCEL:" + pendingId)
