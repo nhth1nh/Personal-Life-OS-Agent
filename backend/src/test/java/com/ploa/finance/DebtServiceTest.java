@@ -371,4 +371,76 @@ class DebtServiceTest {
         assertThat(preview.recommendedApr()).isBetween(BigDecimal.valueOf(35.0), BigDecimal.valueOf(37.0));
         assertThat(preview.recommendedMonthlyDue()).isEqualByComparingTo(BigDecimal.valueOf(2_910_222));
     }
+
+    @Test
+    @DisplayName("Should reconstruct 100m loan from 4.92m payment, detect Standard Chartered, and retain 16.49% stated APR")
+    void testPreviewDebtScanPersonalInstalmentLoanTailPeriod() {
+        DebtOcrResult ocr = new DebtOcrResult(
+                "AMORTIZING_LOAN_CONTRACT",
+                null,
+                "Personal Instalment Loan",
+                DebtType.AMORTIZING_LOAN,
+                null, // Missing original loan
+                28_200_641L, // Current remaining balance
+                4_919_756L, // Regular monthly installment
+                null, // Term months missing
+                7, // 7 months remaining
+                "16.48999999%",
+                16.49,
+                30,
+                LocalDate.of(2026, 10, 30),
+                null,
+                LocalDate.of(2026, 10, 1),
+                false,
+                null,
+                "001-786474-391",
+                0.95
+        );
+
+        DebtScanPreviewResponse preview = debtService.previewDebtScan(ocr);
+
+        assertThat(preview.action()).isEqualTo(ReconciliationAction.CREATE_NEW_DEBT);
+        assertThat(preview.recommendedCreditor()).isEqualTo("Standard Chartered");
+        assertThat(preview.recommendedOriginalPrincipal()).isEqualByComparingTo(BigDecimal.valueOf(100_000_000));
+        assertThat(preview.recommendedPrincipal()).isEqualByComparingTo(BigDecimal.valueOf(28_200_641));
+        assertThat(preview.recommendedApr()).isEqualByComparingTo(BigDecimal.valueOf(16.49));
+        assertThat(preview.aprAnalysis().method()).isEqualTo("EXPLICIT_VERIFIED");
+        assertThat(preview.recommendedMonthlyDue()).isEqualByComparingTo(BigDecimal.valueOf(4_919_756));
+    }
+
+    @Test
+    @DisplayName("Should process SmartCredit 100m loan at 24% APR and calculate 5.28m monthly payment")
+    void testPreviewDebtScanSmartCreditLoan() {
+        DebtOcrResult ocr = new DebtOcrResult(
+                "AMORTIZING_LOAN_CONTRACT",
+                null,
+                "Consumer Loan",
+                DebtType.AMORTIZING_LOAN,
+                100_000_000L,
+                82_959_494L,
+                null,
+                24,
+                null,
+                "24.0%/năm",
+                24.0,
+                30,
+                LocalDate.of(2026, 11, 30),
+                LocalDate.of(2026, 5, 28),
+                null,
+                false,
+                null,
+                "Tài khoản vay: 730-006-119074, Chi nhánh: Trung tâm SmartCredit",
+                0.95
+        );
+
+        DebtScanPreviewResponse preview = debtService.previewDebtScan(ocr);
+
+        assertThat(preview.action()).isEqualTo(ReconciliationAction.CREATE_NEW_DEBT);
+        assertThat(preview.recommendedCreditor()).isEqualTo("SmartCredit");
+        assertThat(preview.recommendedOriginalPrincipal()).isEqualByComparingTo(BigDecimal.valueOf(100_000_000));
+        assertThat(preview.recommendedPrincipal()).isEqualByComparingTo(BigDecimal.valueOf(82_959_494));
+        assertThat(preview.recommendedApr()).isEqualByComparingTo(BigDecimal.valueOf(24.0));
+        assertThat(preview.aprAnalysis().method()).isEqualTo("EXPLICIT_VERIFIED");
+        assertThat(preview.recommendedMonthlyDue()).isBetween(BigDecimal.valueOf(5_280_000), BigDecimal.valueOf(5_290_000));
+    }
 }

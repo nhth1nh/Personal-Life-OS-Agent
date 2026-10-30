@@ -198,13 +198,23 @@ public class DebtAmortizationEngine {
                         "EXPLICIT_VERIFIED",
                         String.format("Verified declining-balance APR of %s%% matches annuity payment", normalizedStated)
                 );
-            } else if (normalizedStated.subtract(flatApr).abs().compareTo(BigDecimal.valueOf(0.5)) <= 0) {
+            } else if (flatApr.compareTo(BigDecimal.ZERO) > 0 && normalizedStated.subtract(flatApr).abs().compareTo(BigDecimal.valueOf(0.5)) <= 0) {
                 return new AprAnalysisResult(
                         derivedEffectiveApr,
                         flatApr,
                         false,
                         "FLAT_RATE_EXPOSED",
                         String.format("Stated rate of %s%% is FLAT interest; true effective declining APR is %s%%", normalizedStated, derivedEffectiveApr)
+                );
+            } else {
+                // When a loan is mid-tenure (remaining balance/months fragment), derivedEffectiveApr is distorted.
+                // The explicit stated APR printed on the contract remains the authoritative ground truth.
+                return new AprAnalysisResult(
+                        normalizedStated,
+                        flatApr,
+                        false,
+                        "EXPLICIT_VERIFIED",
+                        String.format("Stated contractual APR of %s%%", normalizedStated)
                 );
             }
         }

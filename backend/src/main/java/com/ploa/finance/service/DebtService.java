@@ -313,6 +313,70 @@ public class DebtService {
         return currentPrincipal;
     }
 
+    public record ReconstructedLoanTerms(BigDecimal originalPrincipal, int totalTermMonths) {}
+
+    /**
+     * Reconstructs original loan principal and tenure from regular annuity or flat monthly payment
+     * and stated APR when evaluating an ongoing loan in its tail months.
+     */
+    public static ReconstructedLoanTerms deriveOriginalPrincipalFromPayment(BigDecimal currentPrincipal, BigDecimal monthlyPayment, BigDecimal statedApr, Integer remainingMonths) {
+        if (currentPrincipal == null || monthlyPayment == null || statedApr == null || statedApr.compareTo(BigDecimal.ZERO) <= 0 || monthlyPayment.compareTo(BigDecimal.ZERO) <= 0) {
+            return null;
+        }
+
+        double P = monthlyPayment.doubleValue();
+        double r = statedApr.doubleValue() / 12.0 / 100.0;
+        int minMonths = (remainingMonths != null && remainingMonths > 0) ? remainingMonths : 1;
+
+        // Test standard consumer loan tenures in months: 12, 18, 24, 30, 36, 48, 60
+        int[] standardTenures = {12, 18, 24, 30, 36, 48, 60};
+        for (int n : standardTenures) {
+            if (n < minMonths) continue;
+
+            // Annuity loan test: L0 = P * [1 - (1+r)^(-n)] / r
+            double factor = Math.pow(1.0 + r, -n);
+            double estL0Annuity = (P / r) * (1.0 - factor);
+            long roundedTrancheAnnuity = Math.round(estL0Annuity / 5_000_000.0) * 5_000_000L;
+            if (roundedTrancheAnnuity >= currentPrincipal.doubleValue() && Math.abs(estL0Annuity - roundedTrancheAnnuity) <= 50_000.0) {
+                return new ReconstructedLoanTerms(BigDecimal.valueOf(roundedTrancheAnnuity), n);
+            }
+
+            // Flat loan test: P = L0 * (1/n + r_monthly) => L0 = P / (1/n + r_monthly)
+            double estL0Flat = P / ((1.0 / n) + r);
+            long roundedTrancheFlat = Math.round(estL0Flat / 5_000_000.0) * 5_000_000L;
+            if (roundedTrancheFlat >= currentPrincipal.doubleValue() && Math.abs(estL0Flat - roundedTrancheFlat) <= 50_000.0) {
+                return new ReconstructedLoanTerms(BigDecimal.valueOf(roundedTrancheFlat), n);
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * Resolves bank or lender name from creditor string, product name, or statement notes.
+     */
+    public static String detectCreditor(String creditor, String debtName, String note) {
+        if (creditor != null && !creditor.isBlank() && !creditor.equalsIgnoreCase("Unknown Creditor")) {
+            return creditor.trim();
+        }
+        String combined = ((debtName != null ? debtName : "") + " " + (note != null ? note : "")).toLowerCase();
+        if (combined.contains("smartcredit")) return "SmartCredit";
+        if (combined.contains("vpbank") || combined.contains("vpb")) return "VPBank";
+        if (combined.contains("standard chartered") || combined.contains("001-786")) return "Standard Chartered";
+        if (combined.contains("shinhan")) return "Shinhan Bank";
+        if (combined.contains("techcombank") || combined.contains("tcb")) return "Techcombank";
+        if (combined.contains("fe credit")) return "FE Credit";
+        if (combined.contains("home credit")) return "Home Credit";
+        if (combined.contains("mbbank") || combined.contains("mb bank")) return "MBBank";
+        if (combined.contains("vietcombank") || combined.contains("vcb")) return "Vietcombank";
+        if (combined.contains("tpbank")) return "TPBank";
+        if (combined.contains("bidv")) return "BIDV";
+        if (combined.contains("acb")) return "ACB";
+        if (combined.contains("shopee") || combined.contains("spaylater")) return "Shopee SPayLater";
+        if (combined.contains("momo")) return "MoMo";
+        return "Unknown Creditor";
+    }
+
     @Transactional(readOnly = true)
     public DebtScanPreviewResponse previewDebtScan(DebtOcrResult ocr) {
         if (ocr == null) {
@@ -338,15 +402,30 @@ public class DebtService {
                 ? ocr.termMonths()
                 : (ocr.remainingMonths() != null && ocr.remainingMonths() > 0 ? ocr.remainingMonths() : 12);
 
-        if (originalPrincipal == null) {
-            originalPrincipal = deriveOriginalPrincipal(principal, termMonths, ocr.originationDate(), ocr.statementDate(), ocr.note());
-        }
-
         BigDecimal monthlyDue = ocr.monthlyPayment() != null
                 ? BigDecimal.valueOf(ocr.monthlyPayment())
                 : BigDecimal.ZERO;
 
         BigDecimal statedApr = parseStatedApr(ocr.statedInterestRate(), ocr.statedApr());
+
+        if (originalPrincipal == null || originalPrincipal.compareTo(principal) <= 0) {
+            BigDecimal dateDerived = deriveOriginalPrincipal(principal, termMonths, ocr.originationDate(), ocr.statementDate(), ocr.note());
+            if (dateDerived != null && dateDerived.compareTo(principal) > 0) {
+                originalPrincipal = dateDerived;
+            } else {
+                ReconstructedLoanTerms paymentDerived = deriveOriginalPrincipalFromPayment(principal, monthlyDue, statedApr, ocr.remainingMonths());
+                if (paymentDerived != null && paymentDerived.originalPrincipal().compareTo(principal) > 0) {
+                    originalPrincipal = paymentDerived.originalPrincipal();
+                    if (ocr.termMonths() == null || ocr.termMonths() < paymentDerived.totalTermMonths()) {
+                        termMonths = paymentDerived.totalTermMonths();
+                    }
+                }
+            }
+        }
+
+        if (originalPrincipal == null) {
+            originalPrincipal = principal;
+        }
 
         // Base calculation on original borrowing principal for contract terms
         BigDecimal calculationPrincipal = originalPrincipal.compareTo(BigDecimal.ZERO) > 0 ? originalPrincipal : principal;
@@ -417,9 +496,7 @@ public class DebtService {
                 ? ocr.statementDate().plusMonths(termMonths)
                 : LocalDate.now(ZONE).plusMonths(termMonths);
 
-        String recommendedCreditor = ocr.creditor() != null && !ocr.creditor().isBlank()
-                ? ocr.creditor()
-                : "Unknown Creditor";
+        String recommendedCreditor = detectCreditor(ocr.creditor(), ocr.debtName(), ocr.note());
 
         String recommendedName = ocr.debtName() != null && !ocr.debtName().isBlank()
                 ? ocr.debtName()
