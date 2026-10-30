@@ -114,6 +114,8 @@ export interface OcrResult {
   invoiceNumber?: string;
   items?: Array<{ name: string; quantity?: number; price?: number }>;
   confidence?: number;
+  validationStatus?: string;
+  validationWarnings?: string[];
 }
 
 export interface ReadinessResult {

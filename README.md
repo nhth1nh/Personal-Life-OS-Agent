@@ -55,6 +55,68 @@ flowchart TD
 
 ---
 
+## 📊 Component Readiness & Architecture Status
+
+```mermaid
+flowchart TD
+    subgraph S1["1. Ingestion & Sidecars (Ready)"]
+        G["Garmin Daemon (Python 3.12)\n15m polling, token caching"]
+        TG["Telegram Bot Gateway\nLong-polling, inline buttons, intent routing"]
+        CAM["Web Camera / File Dropzone\nDirect browser OCR upload"]
+    end
+
+    subgraph S2["2. Deterministic Java Engines (Ready)"]
+        HE["Health Engine\n• ReadinessEngine: 30d Z-score (PRIME/FATIGUED)\n• SleepEngine: Sleep debt against target\n• WeightEmaEngine: 7-day EMA smoothing"]
+        FE["Finance & Debt Engine\n• BurnRateEngine & CashAwareAllowance\n• DebtAmortizationEngine (Snowball / Avalanche)\n• Real IRR rate derivation & tenure estimation"]
+    end
+
+    subgraph S3["3. AI Semantic & Observability Layer (Ready / In-Progress)"]
+        OCR["Vision OCR Service\nReceipts, bank slips & debt statement parsing"]
+        AI["Life OS Assistant Service\nSelective 2-stage tool planner, temporal grounding (UTC+7)"]
+        BR["Briefing Orchestrator\n07:30 AM Morning & 21:30 PM Evening briefings"]
+        REG["LocalizedPromptRegistry (Active Work)\nExternalized .st templates (Default & Vietnamese)"]
+    end
+
+    subgraph S4["4. Clients & Presentation (Ready)"]
+        PWA["React 19 PWA (:3000)\nDashboard, Health Hub, Finance Hub, OCR Scanner, Chat"]
+        TB_CLIENT["Telegram Chat Client\nPush briefings, quick expense logging, debt scan actions"]
+    end
+
+    G -->|POST /api/v1/health/sync| HE
+    TG -->|Commands & OCR| FE
+    TG -->|Advisory| AI
+    CAM -->|Upload| OCR
+    HE & FE -->|Context & Deterministic Facts| AI
+    HE & FE -->|Aggregates| BR
+    OCR -->|Extracted entities| FE
+    REG -.->|Supplies prompts| OCR & BR
+    BR -->|Push Briefing| TB_CLIENT
+    HE & FE -->|REST API| PWA
+    AI -->|REST /chat| PWA
+
+    classDef compDone fill:#1b5e20,stroke:#4caf50,color:#fff
+    classDef compActive fill:#bf360c,stroke:#ff9800,color:#fff
+    classDef compReady fill:#0d47a1,stroke:#2196f3,color:#fff
+
+    class G,CAM,HE,FE,PWA,TB_CLIENT compDone
+    class TG,OCR,AI,BR compReady
+    class REG compActive
+```
+
+### Subsystem Implementation Matrix
+
+| Subsystem | Key Components | Status | Capabilities |
+|---|---|:---:|---|
+| **Health Core** | `ReadinessEngine`, `SleepEngine`, `WeightEmaEngine`, `garmin-puller` | **Completed** | Continuous Garmin telemetry sync (Body Battery, Stress, HRV rMSSD, RHR, SpO2, sleep stages, activities). Rolling 30-day baseline Z-scores and 7-day EMA weight smoothing. |
+| **Finance & Cashflow** | `BurnRateEngine`, `CashAwareAllowanceEngine`, `DebtAmortizationEngine` | **Completed** | Month-to-date burn rate pacing, safe daily allowance, Flyway V6/V7 cash flow & debt tracking, Snowball vs. Avalanche payoff simulator, and true IRR derivation. |
+| **Telegram Gateway** | `TelegramBotHandler`, `BotMessageFactory`, `TelegramFormatter` | **Completed** | 3-tier bill deduplication, interactive callback cards, voice/text refinement, dedicated debt scan intent routing, and conversational confirmation. |
+| **Frontend Web & PWA** | `DashboardView`, `HealthHubView`, `FinanceHubView`, `ReceiptScannerView`, `AssistantChatView` | **Completed** | React 19 + Tailwind v4 + Recharts. PWA support, local state persistence, interactive biometrics/cashflow charts, direct camera receipt OCR. |
+| **AI Partner & Briefings** | `AssistantService`, `BriefingOrchestrator`, `AssistantTools` | **Completed** | Two-stage selective tool planner, temporal grounding (`Asia/Ho_Chi_Minh` UTC+7), and scheduled 07:30 / 21:30 executive summaries. |
+| **Localization & Prompts** | `LocalizedPromptRegistry`, StringTemplate resources | **In Progress** | Externalized `.st` prompts supporting system default and Vietnamese (`vi`) for OCR parsing, text expense extraction, and daily briefings. |
+| **DevOps & Containers** | `docker-compose.yml`, GitHub Actions CI/CD | **Completed** | Multi-container stack (`postgres`, `backend`, `garmin-puller`, `frontend`), automated test suite, security scans, and GHCR container publishing. |
+
+---
+
 ## 🌟 Key Features & Documentation
 
 > Detailed architecture, formula, and implementation guides are available in the [`docs/`](docs/) directory:

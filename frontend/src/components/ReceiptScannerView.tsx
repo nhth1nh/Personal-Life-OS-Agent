@@ -200,6 +200,30 @@ export const ReceiptScannerView: React.FC = () => {
                 <span className="text-[10px] text-cyan-400 uppercase tracking-wider font-semibold">Ready for ledger</span>
               </div>
 
+              {ocrResult?.validationStatus && (
+                <div className={`p-3 rounded-2xl border text-xs ${
+                  ocrResult.validationStatus === 'VERIFIED'
+                    ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-300'
+                    : ocrResult.validationStatus === 'RECONSTRUCTED'
+                    ? 'bg-purple-500/10 border-purple-500/30 text-purple-300'
+                    : 'bg-amber-500/10 border-amber-500/30 text-amber-300'
+                }`}>
+                  <div className="flex items-center justify-between font-bold">
+                    <span>Quality Gate: {ocrResult.validationStatus}</span>
+                    <span className="text-[10px] uppercase font-mono px-2 py-0.5 rounded-full bg-slate-950">
+                      {ocrResult.validationStatus === 'VERIFIED' ? '🛡️ Invariants Passed' : '⚠️ Attention Required'}
+                    </span>
+                  </div>
+                  {ocrResult.validationWarnings && ocrResult.validationWarnings.length > 0 && (
+                    <ul className="mt-1.5 list-disc list-inside space-y-0.5 opacity-90 text-[11px]">
+                      {ocrResult.validationWarnings.map((w, idx) => (
+                        <li key={idx}>{w}</li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+              )}
+
               <div>
                 <label className="block text-xs font-medium text-slate-400 mb-1">Merchant / Payee</label>
                 <input

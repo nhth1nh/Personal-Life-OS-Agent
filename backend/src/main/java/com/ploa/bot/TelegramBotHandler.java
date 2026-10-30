@@ -857,6 +857,14 @@ public class TelegramBotHandler implements SpringLongPollingBot, LongPollingUpda
             }
         }
 
+        if (preview.validationStatus() != null) {
+            String badge = preview.validationStatus().contains("NEEDS_REVIEW") ? "⚠️ " : "✅ ";
+            sb.append("• <b>Quality Gate:</b> ").append(badge).append("<code>").append(preview.validationStatus()).append("</code>\n");
+        }
+        if (preview.message() != null && preview.message().contains("⚠️ Review")) {
+            sb.append("• <i>").append(TelegramFormatter.escapeHtml(preview.message().substring(preview.message().indexOf("[⚠️ Review")))).append("</i>\n");
+        }
+
         sb.append("\n<i>Review details. Zero silent write. Tap below to confirm:</i>");
 
         String btnLabel = preview.action() == ReconciliationAction.RECORD_DEBT_PAYMENT

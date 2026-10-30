@@ -35,6 +35,26 @@ public class DebtService {
     private final TransactionRepository transactionRepo;
     private final FinancialAccountRepository accountRepo;
     private final DebtAmortizationEngine amortizationEngine;
+    private final com.ploa.ai.validation.OcrValidator ocrValidator;
+
+    @org.springframework.beans.factory.annotation.Autowired
+    public DebtService(
+            DebtRepository debtRepo,
+            DebtScheduleRepository scheduleRepo,
+            DebtPaymentRepository paymentRepo,
+            TransactionRepository transactionRepo,
+            FinancialAccountRepository accountRepo,
+            DebtAmortizationEngine amortizationEngine,
+            @org.springframework.beans.factory.annotation.Autowired(required = false) com.ploa.ai.validation.OcrValidator ocrValidator
+    ) {
+        this.debtRepo = debtRepo;
+        this.scheduleRepo = scheduleRepo;
+        this.paymentRepo = paymentRepo;
+        this.transactionRepo = transactionRepo;
+        this.accountRepo = accountRepo;
+        this.amortizationEngine = amortizationEngine;
+        this.ocrValidator = ocrValidator;
+    }
 
     public DebtService(
             DebtRepository debtRepo,
@@ -44,12 +64,7 @@ public class DebtService {
             FinancialAccountRepository accountRepo,
             DebtAmortizationEngine amortizationEngine
     ) {
-        this.debtRepo = debtRepo;
-        this.scheduleRepo = scheduleRepo;
-        this.paymentRepo = paymentRepo;
-        this.transactionRepo = transactionRepo;
-        this.accountRepo = accountRepo;
-        this.amortizationEngine = amortizationEngine;
+        this(debtRepo, scheduleRepo, paymentRepo, transactionRepo, accountRepo, amortizationEngine, null);
     }
 
     @Transactional
@@ -463,28 +478,39 @@ public class DebtService {
         String validationStatus;
         String message;
 
+        var valResult = ocrValidator != null ? ocrValidator.validateDebt(ocr) : null;
+        String valNotice = (valResult != null && valResult.hasWarnings())
+                ? " [⚠️ Review: " + String.join("; ", valResult.warnings()) + "]"
+                : "";
+
         if (Boolean.TRUE.equals(ocr.isPaymentSlip())) {
             action = ReconciliationAction.RECORD_DEBT_PAYMENT;
-            validationStatus = "MATCHED_PAYMENT";
-            message = matchedDebt != null
+            validationStatus = valResult != null && valResult.hasWarnings() ? "NEEDS_REVIEW" : "MATCHED_PAYMENT";
+            message = (matchedDebt != null
                     ? String.format("Repayment slip matched to active liability '%s'.", matchedDebt.getName())
-                    : "Repayment slip detected. Select an existing debt to apply payment.";
+                    : "Repayment slip detected. Select an existing debt to apply payment.") + valNotice;
         } else if (matchedDebt != null) {
             if (ocr.debtType() == DebtType.REVOLVING_CREDIT || (ocr.currentPrincipal() != null && ocr.currentPrincipal() > 0)) {
                 action = ReconciliationAction.UPDATE_DEBT_BALANCE;
-                validationStatus = "MATCHED_EXISTING_BALANCE";
+                validationStatus = valResult != null && valResult.hasWarnings() ? "NEEDS_REVIEW" : "MATCHED_EXISTING_BALANCE";
                 message = String.format("Matched existing liability '%s' (%s). Update balance to %s VND.",
-                        matchedDebt.getName(), matchedDebt.getCreditor(), principal);
+                        matchedDebt.getName(), matchedDebt.getCreditor(), principal) + valNotice;
             } else {
                 action = ReconciliationAction.CREATE_NEW_DEBT;
-                validationStatus = aprAnalysis.method();
-                message = String.format("Similar creditor '%s' found, but terms indicate a new loan contract.", matchedDebt.getCreditor());
+                validationStatus = valResult != null && valResult.hasWarnings() ? "NEEDS_REVIEW" : aprAnalysis.method();
+                message = String.format("Similar creditor '%s' found, but terms indicate a new loan contract.", matchedDebt.getCreditor()) + valNotice;
             }
         } else {
             action = ReconciliationAction.CREATE_NEW_DEBT;
-            validationStatus = aprAnalysis.method();
+            if (valResult != null && valResult.hasWarnings()) {
+                validationStatus = "NEEDS_REVIEW";
+            } else if (valResult != null && valResult.status() == com.ploa.ai.validation.ValidationStatus.RECONSTRUCTED) {
+                validationStatus = "RECONSTRUCTED";
+            } else {
+                validationStatus = aprAnalysis.method();
+            }
             message = String.format("New debt detected: %s. Effective APR derived as %s%%.",
-                    ocr.debtName() != null ? ocr.debtName() : "Loan", recommendedApr);
+                    ocr.debtName() != null ? ocr.debtName() : "Loan", recommendedApr) + valNotice;
         }
 
         Integer dueDay = ocr.dueDayOfMonth() != null

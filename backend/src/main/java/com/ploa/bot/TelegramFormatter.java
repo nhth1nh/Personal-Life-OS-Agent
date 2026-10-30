@@ -21,6 +21,16 @@ public final class TelegramFormatter {
     private TelegramFormatter() {
     }
 
+    public static String escapeHtml(String input) {
+        if (input == null || input.isBlank()) {
+            return "";
+        }
+        return input.replace("&", "&amp;")
+                .replace("<", "&lt;")
+                .replace(">", "&gt;")
+                .replace("\"", "&quot;");
+    }
+
     public static String markdownToHtml(String input) {
         if (input == null || input.isBlank()) {
             return "";

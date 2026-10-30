@@ -41,11 +41,27 @@ public class BotMessageFactory {
         if (tx.getInvoiceNumber() != null && !tx.getInvoiceNumber().isBlank()) {
             sb.append("🧾 Invoice/Ref: <code>").append(escapeHtml(tx.getInvoiceNumber())).append("</code>\n");
         }
-        sb.append("📝 Note: ").append(note).append("\n\n");
-        sb.append("<i>💡 Tap ✏️ Edit or reply to this message to correct (e.g. 'amount 45k', 'merchant Starbucks').</i>");
+        sb.append("📝 Note: ").append(note).append("\n");
+        if (ocr != null && ocr.validationStatus() != null) {
+            if ("VERIFIED".equalsIgnoreCase(ocr.validationStatus())) {
+                sb.append("🛡️ Quality Gate: <b>✅ VERIFIED</b>\n");
+            } else if ("NEEDS_REVIEW".equalsIgnoreCase(ocr.validationStatus())) {
+                sb.append("🛡️ Quality Gate: <b>⚠️ NEEDS REVIEW</b>\n");
+                if (ocr.validationWarnings() != null && !ocr.validationWarnings().isEmpty()) {
+                    for (String w : ocr.validationWarnings()) {
+                        sb.append("  • <i>").append(escapeHtml(w)).append("</i>\n");
+                    }
+                }
+            } else if ("RECONSTRUCTED".equalsIgnoreCase(ocr.validationStatus())) {
+                sb.append("🛡️ Quality Gate: <b>🔄 RECONSTRUCTED</b>\n");
+            }
+        }
+        sb.append("\n<i>💡 Tap ✏️ Edit or reply to this message to correct (e.g. 'amount 45k', 'merchant Starbucks').</i>");
 
         String txId = tx.getId().toString();
-        String confirmText = tx.getDuplicateWarning() != null ? "✅ Confirm Anyway" : "✅ Confirm";
+        String confirmText = tx.getDuplicateWarning() != null
+                ? "✅ Confirm Anyway"
+                : ("NEEDS_REVIEW".equalsIgnoreCase(ocr != null ? ocr.validationStatus() : null) ? "⚠️ Confirm Discrepancy" : "✅ Confirm");
 
         InlineKeyboardMarkup keyboard = InlineKeyboardMarkup.builder()
                 .keyboardRow(new InlineKeyboardRow(List.of(

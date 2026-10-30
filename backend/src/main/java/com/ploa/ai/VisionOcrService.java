@@ -147,22 +147,32 @@ public class VisionOcrService {
     private final TemporalContext temporalContext;
     private final ImageOptimizer imageOptimizer;
     private final LocalizedPromptRegistry promptRegistry;
+    private final com.ploa.ai.validation.OcrValidator ocrValidator;
 
     @Autowired
     public VisionOcrService(ChatClient.Builder chatClientBuilder,
                             TemporalContext temporalContext,
                             ImageOptimizer imageOptimizer,
-                            @Autowired(required = false) LocalizedPromptRegistry promptRegistry) {
+                            @Autowired(required = false) LocalizedPromptRegistry promptRegistry,
+                            @Autowired(required = false) com.ploa.ai.validation.OcrValidator ocrValidator) {
         this.chatClient = chatClientBuilder.build();
         this.temporalContext = temporalContext;
         this.imageOptimizer = imageOptimizer;
         this.promptRegistry = promptRegistry;
+        this.ocrValidator = ocrValidator;
+    }
+
+    public VisionOcrService(ChatClient.Builder chatClientBuilder,
+                            TemporalContext temporalContext,
+                            ImageOptimizer imageOptimizer,
+                            LocalizedPromptRegistry promptRegistry) {
+        this(chatClientBuilder, temporalContext, imageOptimizer, promptRegistry, null);
     }
 
     public VisionOcrService(ChatClient.Builder chatClientBuilder,
                             TemporalContext temporalContext,
                             ImageOptimizer imageOptimizer) {
-        this(chatClientBuilder, temporalContext, imageOptimizer, null);
+        this(chatClientBuilder, temporalContext, imageOptimizer, null, null);
     }
 
     public LocalizedPromptRegistry getPromptRegistry() {
@@ -261,12 +271,14 @@ public class VisionOcrService {
             json = json.replaceFirst("```[a-z]*\\n?", "").replaceAll("```$", "").strip();
         }
 
-        return MAPPER.readValue(json, OcrResult.class);
+        OcrResult parsed = MAPPER.readValue(json, OcrResult.class);
+        return ocrValidator != null ? ocrValidator.applyValidation(parsed) : parsed;
     }
 
     private OcrResult fallbackResult(String note) {
-        return new OcrResult("UNKNOWN", null, null, LocalDate.now(), null, null,
+        OcrResult fallback = new OcrResult("UNKNOWN", null, null, LocalDate.now(), null, null,
                 "VND", "Other", "DISCRETIONARY", null, note, 0.0, null);
+        return ocrValidator != null ? ocrValidator.applyValidation(fallback) : fallback;
     }
 
     /**
@@ -321,7 +333,8 @@ public class VisionOcrService {
             if (json.startsWith("```")) {
                 json = json.replaceFirst("```[a-z]*\\n?", "").replaceAll("```$", "").strip();
             }
-            return MAPPER.readValue(json, OcrResult.class);
+            OcrResult parsed = MAPPER.readValue(json, OcrResult.class);
+            return ocrValidator != null ? ocrValidator.applyValidation(parsed) : parsed;
         } catch (Exception e) {
             log.error("Failed to refine transaction: {}", e.getMessage(), e);
             throw new RuntimeException("Could not refine transaction: " + e.getMessage(), e);
@@ -362,11 +375,12 @@ public class VisionOcrService {
             }
             OcrResult result = MAPPER.readValue(json, OcrResult.class);
             log.info("Text OCR parsed: amount={} VND, category={}", result.totalAmount(), result.category());
-            return result;
+            return ocrValidator != null ? ocrValidator.applyValidation(result) : result;
         } catch (Exception e) {
             log.error("Text OCR parsing failed: {}", e.getMessage(), e);
-            return new OcrResult("UNKNOWN", "manual", null, LocalDate.now(), null, null,
+            OcrResult fallback = new OcrResult("UNKNOWN", "manual", null, LocalDate.now(), null, null,
                     "VND", "Other", "DISCRETIONARY", null, text, 0.0, null);
+            return ocrValidator != null ? ocrValidator.applyValidation(fallback) : fallback;
         }
     }
 
