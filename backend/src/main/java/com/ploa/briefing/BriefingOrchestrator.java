@@ -84,6 +84,7 @@ public class BriefingOrchestrator {
     private final TemporalContext temporalContext;
     private final ChatClient chatClient;
     private final PloaProperties properties;
+    private final com.ploa.ai.prompt.LocalizedPromptRegistry promptRegistry;
     private TelegramClient telegramClient;
 
     @Autowired
@@ -94,7 +95,8 @@ public class BriefingOrchestrator {
                                 UserProfileService profileService,
                                 TemporalContext temporalContext,
                                 ChatClient.Builder chatClientBuilder,
-                                PloaProperties properties) {
+                                PloaProperties properties,
+                                @Autowired(required = false) com.ploa.ai.prompt.LocalizedPromptRegistry promptRegistry) {
         this.healthService = healthService;
         this.activityService = activityService;
         this.financeService = financeService;
@@ -103,10 +105,41 @@ public class BriefingOrchestrator {
         this.temporalContext = temporalContext;
         this.chatClient = chatClientBuilder.build();
         this.properties = properties;
+        this.promptRegistry = promptRegistry;
         String token = (properties != null && properties.telegram() != null) ? properties.telegram().botToken() : null;
         if (token != null && !token.isBlank()) {
             this.telegramClient = new OkHttpTelegramClient(token);
         }
+    }
+
+    public BriefingOrchestrator(HealthService healthService,
+                                ActivityService activityService,
+                                FinanceService financeService,
+                                MemoryService memoryService,
+                                UserProfileService profileService,
+                                TemporalContext temporalContext,
+                                ChatClient.Builder chatClientBuilder,
+                                PloaProperties properties) {
+        this(healthService, activityService, financeService, memoryService, profileService,
+                temporalContext, chatClientBuilder, properties, null);
+    }
+
+    public com.ploa.ai.prompt.LocalizedPromptRegistry getPromptRegistry() {
+        return promptRegistry;
+    }
+
+    private String getMorningPrompt() {
+        if (promptRegistry != null) {
+            return promptRegistry.getPrompt("briefing/morning-briefing");
+        }
+        return SYSTEM_PROMPT_MORNING;
+    }
+
+    private String getEveningPrompt() {
+        if (promptRegistry != null) {
+            return promptRegistry.getPrompt("briefing/evening-briefing");
+        }
+        return SYSTEM_PROMPT_EVENING;
     }
 
     // ── Morning Briefing (07:30 AM Asia/Ho_Chi_Minh) ──────────────────────────
@@ -149,7 +182,7 @@ public class BriefingOrchestrator {
 
         return chatClient.prompt()
                 .advisors(a -> a.param("operation", "briefing_morning"))
-                .system(SYSTEM_PROMPT_MORNING)
+                .system(getMorningPrompt())
                 .user(context)
                 .call()
                 .content();
@@ -183,7 +216,7 @@ public class BriefingOrchestrator {
 
         return chatClient.prompt()
                 .advisors(a -> a.param("operation", "briefing_evening"))
-                .system(SYSTEM_PROMPT_EVENING)
+                .system(getEveningPrompt())
                 .user(context)
                 .call()
                 .content();

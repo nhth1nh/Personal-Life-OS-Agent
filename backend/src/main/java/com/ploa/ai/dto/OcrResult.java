@@ -12,15 +12,15 @@ import java.util.List;
  */
 @JsonIgnoreProperties(ignoreUnknown = true)
 public record OcrResult(
-        @JsonProperty("document_type") String documentType,
+        @JsonProperty("document_type") @JsonAlias({"documentType", "type"}) String documentType,
         @JsonProperty("source_platform") String sourcePlatform,
         @JsonProperty("invoice_number") @JsonAlias({"invoiceNumber", "order_id", "reference_code", "ref_no", "bill_id"}) String invoiceNumber,
-        @JsonProperty("transaction_date") LocalDate transactionDate,
+        @JsonProperty("transaction_date") @JsonAlias({"date", "transactionDate", "tx_date"}) LocalDate transactionDate,
         @JsonProperty("transaction_time") @JsonAlias({"transactionTime", "time"}) String transactionTime,
-        @JsonProperty("total_amount") Long totalAmount,
+        @JsonProperty("total_amount") @JsonAlias({"amount", "totalAmount", "total"}) Long totalAmount,
         @JsonProperty("currency") String currency,
         @JsonProperty("category") String category,
-        @JsonProperty("spend_type") String spendType,
+        @JsonProperty("spend_type") @JsonAlias({"spendType"}) String spendType,
         @JsonProperty("merchant") String merchant,
         @JsonProperty("note") String note,
         @JsonProperty("confidence") @JsonAlias({"confidence_score"}) Double confidence,

@@ -4,12 +4,14 @@ import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.ploa.ai.dto.DebtOcrResult;
 import com.ploa.ai.dto.OcrResult;
+import com.ploa.ai.prompt.LocalizedPromptRegistry;
 import com.ploa.ai.util.ImageOptimizer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.chat.messages.UserMessage;
 import org.springframework.ai.content.Media;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.core.io.ByteArrayResource;
 import org.springframework.stereotype.Service;
 import org.springframework.util.MimeType;
@@ -144,13 +146,48 @@ public class VisionOcrService {
     private final ChatClient chatClient;
     private final TemporalContext temporalContext;
     private final ImageOptimizer imageOptimizer;
+    private final LocalizedPromptRegistry promptRegistry;
+
+    @Autowired
+    public VisionOcrService(ChatClient.Builder chatClientBuilder,
+                            TemporalContext temporalContext,
+                            ImageOptimizer imageOptimizer,
+                            @Autowired(required = false) LocalizedPromptRegistry promptRegistry) {
+        this.chatClient = chatClientBuilder.build();
+        this.temporalContext = temporalContext;
+        this.imageOptimizer = imageOptimizer;
+        this.promptRegistry = promptRegistry;
+    }
 
     public VisionOcrService(ChatClient.Builder chatClientBuilder,
                             TemporalContext temporalContext,
                             ImageOptimizer imageOptimizer) {
-        this.chatClient = chatClientBuilder.build();
-        this.temporalContext = temporalContext;
-        this.imageOptimizer = imageOptimizer;
+        this(chatClientBuilder, temporalContext, imageOptimizer, null);
+    }
+
+    public LocalizedPromptRegistry getPromptRegistry() {
+        return promptRegistry;
+    }
+
+    public String getReceiptOcrPrompt() {
+        if (promptRegistry != null) {
+            return promptRegistry.getPrompt("ocr/receipt-ocr");
+        }
+        return OCR_SYSTEM_PROMPT;
+    }
+
+    public String getTextExpensePrompt() {
+        if (promptRegistry != null) {
+            return promptRegistry.getPrompt("ocr/text-expense");
+        }
+        return TEXT_EXPENSE_SYSTEM_PROMPT;
+    }
+
+    public String getDebtOcrPrompt() {
+        if (promptRegistry != null) {
+            return promptRegistry.getPrompt("ocr/debt-ocr");
+        }
+        return DEBT_OCR_SYSTEM_PROMPT;
     }
 
     /**
@@ -212,7 +249,7 @@ public class VisionOcrService {
 
         String raw = chatClient.prompt()
                 .advisors(a -> a.param("operation", "ocr_image"))
-                .system(OCR_SYSTEM_PROMPT)
+                .system(getReceiptOcrPrompt())
                 .messages(userMessage)
                 .call()
                 .content();
@@ -275,7 +312,7 @@ public class VisionOcrService {
         try {
             String raw = chatClient.prompt()
                     .advisors(a -> a.param("operation", "ocr_refine"))
-                    .system(OCR_SYSTEM_PROMPT)
+                    .system(getReceiptOcrPrompt())
                     .user(prompt)
                     .call()
                     .content();
@@ -314,7 +351,7 @@ public class VisionOcrService {
         try {
             String raw = chatClient.prompt()
                     .advisors(a -> a.param("operation", "ocr_text"))
-                    .system(TEXT_EXPENSE_SYSTEM_PROMPT)
+                    .system(getTextExpensePrompt())
                     .user(prompt)
                     .call()
                     .content();
@@ -332,6 +369,7 @@ public class VisionOcrService {
                     "VND", "Other", "DISCRETIONARY", null, text, 0.0, null);
         }
     }
+
     /**
      * Extract structured debt terms, credit card statement balances, or loan schedules from an image.
      */
@@ -365,7 +403,7 @@ public class VisionOcrService {
 
         String raw = chatClient.prompt()
                 .advisors(a -> a.param("operation", "ocr_debt"))
-                .system(DEBT_OCR_SYSTEM_PROMPT)
+                .system(getDebtOcrPrompt())
                 .messages(userMessage)
                 .call()
                 .content();
@@ -384,5 +422,4 @@ public class VisionOcrService {
         return new DebtOcrResult("UNKNOWN", null, null, null, null, null, null,
                 null, null, null, null, null, null, null, false, null, note, 0.0);
     }
-
 }
