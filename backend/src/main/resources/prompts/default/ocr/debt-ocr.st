@@ -6,6 +6,7 @@ Return ONLY a valid JSON object with these fields (use null for missing values):
   "document_type": "AMORTIZING_LOAN_CONTRACT" | "CREDIT_CARD_STATEMENT" | "BNPL_SCHEDULE" | "DEBT_PAYMENT_SLIP" | "UNKNOWN",
   "creditor": "<Bank or lender name>" | null,
   "debt_name": "<Descriptive product name>" | null,
+  "account_number": "<Contract or loan account number>" | null,
   "debt_type": "AMORTIZING_LOAN" | "REVOLVING_CREDIT" | "INSTALLMENT_BNPL" | "PEER_DEBT",
   "original_principal": <integer in local currency, total original loan amount borrowed> | null,
   "current_principal": <integer in local currency, current outstanding balance> | null,

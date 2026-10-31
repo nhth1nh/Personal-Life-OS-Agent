@@ -16,6 +16,7 @@ public record DebtOcrResult(
         @JsonProperty("document_type") String documentType,
         @JsonProperty("creditor") String creditor,
         @JsonProperty("debt_name") @JsonAlias({"debtName", "loan_name", "product_name"}) String debtName,
+        @JsonProperty("account_number") @JsonAlias({"accountNumber", "contract_number", "contractNumber", "so_tai_khoan", "tai_khoan_vay", "account_no", "accountNo"}) String accountNumber,
         @JsonProperty("debt_type") DebtType debtType,
         @JsonProperty("original_principal") @JsonAlias({"originalPrincipal", "total_borrowed", "limit_used", "total_amount"}) Long originalPrincipal,
         @JsonProperty("current_principal") @JsonAlias({"currentPrincipal", "outstanding_balance", "statement_balance", "du_no_hien_tai"}) Long currentPrincipal,
@@ -34,7 +35,36 @@ public record DebtOcrResult(
         @JsonProperty("confidence") Double confidence
 ) {
     /**
-     * Backwards-compatible convenience constructor without originationDate.
+     * Backwards-compatible convenience constructor without accountNumber.
+     */
+    public DebtOcrResult(
+            String documentType,
+            String creditor,
+            String debtName,
+            DebtType debtType,
+            Long originalPrincipal,
+            Long currentPrincipal,
+            Long monthlyPayment,
+            Integer termMonths,
+            Integer remainingMonths,
+            String statedInterestRate,
+            Double statedApr,
+            Integer dueDayOfMonth,
+            LocalDate dueDate,
+            LocalDate originationDate,
+            LocalDate statementDate,
+            Boolean isPaymentSlip,
+            Long paymentAmount,
+            String note,
+            Double confidence
+    ) {
+        this(documentType, creditor, debtName, null, debtType, originalPrincipal, currentPrincipal,
+                monthlyPayment, termMonths, remainingMonths, statedInterestRate, statedApr,
+                dueDayOfMonth, dueDate, originationDate, statementDate, isPaymentSlip, paymentAmount, note, confidence);
+    }
+
+    /**
+     * Backwards-compatible convenience constructor without originationDate and accountNumber.
      */
     public DebtOcrResult(
             String documentType,
@@ -56,7 +86,7 @@ public record DebtOcrResult(
             String note,
             Double confidence
     ) {
-        this(documentType, creditor, debtName, debtType, originalPrincipal, currentPrincipal,
+        this(documentType, creditor, debtName, null, debtType, originalPrincipal, currentPrincipal,
                 monthlyPayment, termMonths, remainingMonths, statedInterestRate, statedApr,
                 dueDayOfMonth, dueDate, null, statementDate, isPaymentSlip, paymentAmount, note, confidence);
     }

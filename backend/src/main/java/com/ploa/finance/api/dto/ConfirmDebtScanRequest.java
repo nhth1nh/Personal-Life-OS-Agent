@@ -11,6 +11,7 @@ public record ConfirmDebtScanRequest(
         UUID debtId,
         String name,
         String creditor,
+        String accountNumber,
         DebtType debtType,
         BigDecimal originalPrincipal,
         BigDecimal principal,
@@ -28,6 +29,7 @@ public record ConfirmDebtScanRequest(
             String name,
             String creditor,
             DebtType debtType,
+            BigDecimal originalPrincipal,
             BigDecimal principal,
             BigDecimal apr,
             BigDecimal monthlyDue,
@@ -37,6 +39,24 @@ public record ConfirmDebtScanRequest(
             BigDecimal paymentAmount,
             String notes
     ) {
-        this(action, debtId, name, creditor, debtType, principal, principal, apr, monthlyDue, dueDayOfMonth, dueDate, maturityDate, paymentAmount, notes);
+        this(action, debtId, name, creditor, null, debtType, originalPrincipal, principal, apr, monthlyDue, dueDayOfMonth, dueDate, maturityDate, paymentAmount, notes);
+    }
+
+    public ConfirmDebtScanRequest(
+            ReconciliationAction action,
+            UUID debtId,
+            String name,
+            String creditor,
+            DebtType debtType,
+            BigDecimal principal,
+            BigDecimal apr,
+            BigDecimal monthlyDue,
+            Integer dueDayOfMonth,
+            LocalDate dueDate,
+            LocalDate maturityDate,
+            BigDecimal paymentAmount,
+            String notes
+    ) {
+        this(action, debtId, name, creditor, null, debtType, principal, principal, apr, monthlyDue, dueDayOfMonth, dueDate, maturityDate, paymentAmount, notes);
     }
 }

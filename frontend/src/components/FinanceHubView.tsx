@@ -92,6 +92,7 @@ export const FinanceHubView: React.FC = () => {
   const [debtScanForm, setDebtScanForm] = useState({
     name: '',
     creditor: '',
+    accountNumber: '',
     debtType: 'AMORTIZING_LOAN' as Debt['debtType'],
     originalPrincipal: '',
     principal: '',
@@ -167,6 +168,22 @@ export const FinanceHubView: React.FC = () => {
     }
   };
 
+  const handleDeleteDebt = async (debt: Debt) => {
+    if (!window.confirm(`Are you sure you want to delete "${debt.name}" (${debt.creditor})? This will also remove its associated repayment schedule.`)) {
+      return;
+    }
+    try {
+      await api.deleteDebt(debt.id);
+      if (selectedDebtForSchedule?.id === debt.id) {
+        setSelectedDebtForSchedule(null);
+        setScheduleItems([]);
+      }
+      loadAllData();
+    } catch (err: any) {
+      alert(`Failed to delete debt: ${err.message}`);
+    }
+  };
+
   const handleCreateExpense = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
@@ -234,6 +251,7 @@ export const FinanceHubView: React.FC = () => {
       setDebtScanForm({
         name: preview.recommendedName || '',
         creditor: preview.recommendedCreditor || '',
+        accountNumber: preview.recommendedAccountNumber || preview.rawOcr?.account_number || preview.rawOcr?.accountNumber || '',
         debtType: preview.recommendedDebtType || 'AMORTIZING_LOAN',
         originalPrincipal: preview.recommendedOriginalPrincipal ? String(preview.recommendedOriginalPrincipal) : (preview.recommendedPrincipal ? String(preview.recommendedPrincipal) : ''),
         principal: preview.recommendedPrincipal ? String(preview.recommendedPrincipal) : '',
@@ -260,6 +278,7 @@ export const FinanceHubView: React.FC = () => {
         debtId: debtScanPreview.matchedDebtId,
         name: debtScanForm.name,
         creditor: debtScanForm.creditor,
+        accountNumber: debtScanForm.accountNumber || undefined,
         debtType: debtScanForm.debtType,
         originalPrincipal: debtScanForm.originalPrincipal ? Number(debtScanForm.originalPrincipal) : Number(debtScanForm.principal),
         principal: Number(debtScanForm.principal),
@@ -660,6 +679,13 @@ export const FinanceHubView: React.FC = () => {
                       className="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 text-xs transition-all"
                     >
                       Schedule
+                    </button>
+                    <button
+                      onClick={() => handleDeleteDebt(d)}
+                      className="p-1.5 rounded-xl bg-slate-800 hover:bg-rose-500/20 text-slate-400 hover:text-rose-400 border border-slate-700 hover:border-rose-500/30 text-xs transition-all"
+                      title="Delete Debt"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
                     </button>
                   </div>
                 </div>
@@ -1551,14 +1577,25 @@ export const FinanceHubView: React.FC = () => {
               </div>
 
               <div>
-                <label className="text-xs text-slate-400 block mb-1">Notes</label>
+                <label className="text-xs text-slate-400 block mb-1">Account / Contract #</label>
                 <input
                   type="text"
-                  value={debtScanForm.notes}
-                  onChange={(e) => setDebtScanForm({ ...debtScanForm, notes: e.target.value })}
-                  className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-slate-100 focus:outline-none focus:border-purple-500"
+                  placeholder="e.g. 001-786474-391"
+                  value={debtScanForm.accountNumber}
+                  onChange={(e) => setDebtScanForm({ ...debtScanForm, accountNumber: e.target.value })}
+                  className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-slate-100 focus:outline-none focus:border-purple-500 font-mono"
                 />
               </div>
+            </div>
+
+            <div>
+              <label className="text-xs text-slate-400 block mb-1">Notes</label>
+              <input
+                type="text"
+                value={debtScanForm.notes}
+                onChange={(e) => setDebtScanForm({ ...debtScanForm, notes: e.target.value })}
+                className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-slate-100 focus:outline-none focus:border-purple-500"
+              />
             </div>
 
 

@@ -841,6 +841,9 @@ public class TelegramBotHandler implements SpringLongPollingBot, LongPollingUpda
             sb.append("🏦 <b>Loan / Debt Contract Detected</b>\n\n");
             sb.append("• <b>Lender:</b> ").append(preview.recommendedCreditor()).append("\n");
             sb.append("• <b>Product:</b> ").append(preview.recommendedName()).append("\n");
+            if (preview.recommendedAccountNumber() != null && !preview.recommendedAccountNumber().isBlank()) {
+                sb.append("• <b>Account #:</b> <code>").append(TelegramFormatter.escapeHtml(preview.recommendedAccountNumber())).append("</code>\n");
+            }
             if (preview.recommendedOriginalPrincipal() != null && preview.recommendedPrincipal() != null && preview.recommendedOriginalPrincipal().compareTo(preview.recommendedPrincipal()) != 0) {
                 sb.append("• <b>Original Loan:</b> ").append(String.format("%,d VND", preview.recommendedOriginalPrincipal().longValue())).append("\n");
                 sb.append("• <b>Current Balance:</b> ").append(String.format("%,d VND", preview.recommendedPrincipal().longValue())).append("\n");
@@ -909,7 +912,9 @@ public class TelegramBotHandler implements SpringLongPollingBot, LongPollingUpda
                     preview.matchedDebtId(),
                     preview.recommendedName(),
                     preview.recommendedCreditor(),
+                    preview.recommendedAccountNumber(),
                     preview.recommendedDebtType(),
+                    preview.recommendedOriginalPrincipal() != null ? preview.recommendedOriginalPrincipal() : preview.recommendedPrincipal(),
                     preview.recommendedPrincipal(),
                     preview.recommendedApr(),
                     preview.recommendedMonthlyDue(),

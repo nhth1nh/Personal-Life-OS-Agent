@@ -24,4 +24,8 @@ public interface DebtPaymentRepository extends JpaRepository<DebtPayment, UUID> 
 
     @Query("SELECT COALESCE(SUM(p.interestPortion + p.feePortion), 0) FROM DebtPayment p WHERE p.paymentDate BETWEEN :startDate AND :endDate")
     BigDecimal sumInterestAndFeesPaidBetween(@Param("startDate") LocalDate startDate, @Param("endDate") LocalDate endDate);
+
+    @org.springframework.data.jpa.repository.Modifying
+    @Query("DELETE FROM DebtPayment p WHERE p.debt.id = :debtId")
+    void deleteByDebtId(@Param("debtId") UUID debtId);
 }

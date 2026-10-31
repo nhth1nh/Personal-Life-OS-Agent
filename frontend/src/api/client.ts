@@ -166,6 +166,7 @@ export const api = {
   // Debts & Simulations
   getDebts: () => request<Debt[]>('/finance/debts'),
   getDebtById: (id: string) => request<Debt>(`/finance/debts/${id}`),
+  deleteDebt: (id: string) => request<void>(`/finance/debts/${id}`, { method: 'DELETE' }),
   createDebt: (data: {
     name: string;
     creditor: string;

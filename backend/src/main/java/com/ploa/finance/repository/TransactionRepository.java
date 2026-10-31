@@ -106,4 +106,8 @@ public interface TransactionRepository extends JpaRepository<Transaction, UUID> 
     List<Transaction> findByAmountAndTxDateAndMerchantIgnoreCase(Long amount, LocalDate txDate, String merchant);
 
     List<Transaction> findByAmountAndTxDate(Long amount, LocalDate txDate);
+
+    @org.springframework.data.jpa.repository.Modifying
+    @Query("UPDATE Transaction t SET t.debtId = null WHERE t.debtId = :debtId")
+    void clearDebtId(@Param("debtId") UUID debtId);
 }

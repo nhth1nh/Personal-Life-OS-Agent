@@ -50,6 +50,12 @@ public class DebtController {
         return ResponseEntity.ok(debtService.createDebt(req));
     }
 
+    @DeleteMapping("/{id}")
+    public ResponseEntity<Void> deleteDebt(@PathVariable UUID id) {
+        debtService.deleteDebt(id);
+        return ResponseEntity.noContent().build();
+    }
+
     @GetMapping("/{id}/schedule")
     public ResponseEntity<List<DebtSchedule>> getDebtSchedule(@PathVariable UUID id) {
         return ResponseEntity.ok(debtService.getDebtSchedule(id));

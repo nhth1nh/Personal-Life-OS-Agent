@@ -22,4 +22,8 @@ public interface DebtScheduleRepository extends JpaRepository<DebtSchedule, UUID
 
     @Query("SELECT COALESCE(SUM(s.expectedPayment), 0) FROM DebtSchedule s WHERE s.dueDate BETWEEN :startDate AND :endDate AND s.status = 'UPCOMING'")
     BigDecimal sumUpcomingObligationsBetween(@Param("startDate") LocalDate startDate, @Param("endDate") LocalDate endDate);
+
+    @org.springframework.data.jpa.repository.Modifying
+    @Query("DELETE FROM DebtSchedule s WHERE s.debt.id = :debtId")
+    void deleteByDebtId(@Param("debtId") UUID debtId);
 }

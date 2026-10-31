@@ -179,6 +179,7 @@ export interface Debt {
   id: string;
   name: string;
   creditor: string;
+  accountNumber?: string;
   debtType: 'AMORTIZING_LOAN' | 'REVOLVING_CREDIT' | 'INSTALLMENT_BNPL' | 'PEER_DEBT';
   currency: string;
   originalPrincipal: number;
@@ -265,6 +266,8 @@ export interface DebtOcrResult {
   creditor: string | null;
   debt_name?: string | null;
   debtName?: string | null;
+  account_number?: string | null;
+  accountNumber?: string | null;
   debt_type?: 'AMORTIZING_LOAN' | 'REVOLVING_CREDIT' | 'INSTALLMENT_BNPL' | 'PEER_DEBT';
   debtType?: 'AMORTIZING_LOAN' | 'REVOLVING_CREDIT' | 'INSTALLMENT_BNPL' | 'PEER_DEBT';
   original_principal?: number | null;
@@ -303,6 +306,7 @@ export interface DebtScanPreviewResponse {
   action: 'CREATE_NEW_DEBT' | 'UPDATE_DEBT_BALANCE' | 'RECORD_DEBT_PAYMENT';
   recommendedName: string;
   recommendedCreditor: string;
+  recommendedAccountNumber?: string;
   recommendedDebtType: 'AMORTIZING_LOAN' | 'REVOLVING_CREDIT' | 'INSTALLMENT_BNPL' | 'PEER_DEBT';
   recommendedOriginalPrincipal?: number;
   recommendedPrincipal: number;
@@ -320,6 +324,7 @@ export interface ConfirmDebtScanRequest {
   debtId?: string | null;
   name: string;
   creditor: string;
+  accountNumber?: string;
   debtType: 'AMORTIZING_LOAN' | 'REVOLVING_CREDIT' | 'INSTALLMENT_BNPL' | 'PEER_DEBT';
   originalPrincipal?: number;
   principal: number;

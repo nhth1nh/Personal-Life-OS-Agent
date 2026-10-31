@@ -443,4 +443,128 @@ class DebtServiceTest {
         assertThat(preview.aprAnalysis().method()).isEqualTo("EXPLICIT_VERIFIED");
         assertThat(preview.recommendedMonthlyDue()).isBetween(BigDecimal.valueOf(5_280_000), BigDecimal.valueOf(5_290_000));
     }
+
+    @Test
+    @DisplayName("Deduplication Hygiene: Distinct loans from same creditor with different account numbers must CREATE_NEW_DEBT, never collapse into update")
+    void testDistinctLoansFromSameCreditorWithDifferentAccountNumbers() {
+        Debt existingLoan1 = new Debt();
+        existingLoan1.setName("Personal Instalment Loan");
+        existingLoan1.setCreditor("Standard Chartered");
+        existingLoan1.setDebtType(DebtType.AMORTIZING_LOAN);
+        existingLoan1.setAccountNumber("001-786474-391");
+        existingLoan1.setCurrentPrincipal(BigDecimal.valueOf(28_200_641));
+        existingLoan1.setOriginalPrincipal(BigDecimal.valueOf(100_000_000));
+        existingLoan1.setStatus(DebtStatus.ACTIVE);
+
+        when(debtRepo.findByStatusOrderByMaturityDateAsc(DebtStatus.ACTIVE)).thenReturn(List.of(existingLoan1));
+
+        // Loan 2 scan with different account number 001-786474-393 and balance 148,442,898 VND
+        DebtOcrResult ocrLoan2 = new DebtOcrResult(
+                "AMORTIZING_LOAN_CONTRACT",
+                "Standard Chartered",
+                "Personal Instalment Loan",
+                "001-786474-393",
+                DebtType.AMORTIZING_LOAN,
+                null,
+                148_442_898L,
+                3_627_020L,
+                null,
+                59,
+                "15.74%",
+                15.74,
+                10,
+                LocalDate.of(2026, 11, 10),
+                null,
+                null,
+                false,
+                null,
+                "001-786474-393",
+                0.98
+        );
+
+        DebtScanPreviewResponse preview = debtService.previewDebtScan(ocrLoan2);
+
+        // Invariant: Must NOT collapse into updating loan 1!
+        assertThat(preview.action()).isEqualTo(ReconciliationAction.CREATE_NEW_DEBT);
+        assertThat(preview.matchedDebtId()).isNull();
+        assertThat(preview.recommendedAccountNumber()).isEqualTo("001-786474-393");
+        assertThat(preview.recommendedPrincipal()).isEqualByComparingTo(BigDecimal.valueOf(148_442_898));
+        assertThat(preview.recommendedOriginalPrincipal()).isEqualByComparingTo(BigDecimal.valueOf(150_000_000));
+        assertThat(preview.recommendedApr()).isEqualByComparingTo(BigDecimal.valueOf(15.74));
+        assertThat(preview.recommendedDueDay()).isEqualTo(10);
+    }
+
+    @Test
+    @DisplayName("Contract Lifecycle: Statement for identical account number must match existing debt and UPDATE_DEBT_BALANCE")
+    void testSameLoanAccountMatchTriggersUpdateDebtBalance() {
+        UUID loan1Id = UUID.randomUUID();
+        Debt existingLoan1 = new Debt();
+        existingLoan1.setName("Personal Instalment Loan");
+        existingLoan1.setCreditor("Standard Chartered");
+        existingLoan1.setDebtType(DebtType.AMORTIZING_LOAN);
+        existingLoan1.setAccountNumber("001-786474-391");
+        existingLoan1.setCurrentPrincipal(BigDecimal.valueOf(28_200_641));
+        existingLoan1.setOriginalPrincipal(BigDecimal.valueOf(100_000_000));
+        existingLoan1.setStatus(DebtStatus.ACTIVE);
+
+        // Reflection to set private id for mock testing
+        try {
+            java.lang.reflect.Field idField = Debt.class.getDeclaredField("id");
+            idField.setAccessible(true);
+            idField.set(existingLoan1, loan1Id);
+        } catch (Exception e) {
+            throw new RuntimeException(e);
+        }
+
+        when(debtRepo.findByStatusOrderByMaturityDateAsc(DebtStatus.ACTIVE)).thenReturn(List.of(existingLoan1));
+
+        // Scan next month's statement for 001-786474-391 with reduced balance 23,280,885 VND
+        DebtOcrResult updatedStatement = new DebtOcrResult(
+                "AMORTIZING_LOAN_CONTRACT",
+                "Standard Chartered",
+                "Personal Instalment Loan",
+                "001-786474-391",
+                DebtType.AMORTIZING_LOAN,
+                null,
+                23_280_885L,
+                4_919_756L,
+                null,
+                6,
+                "16.49%",
+                16.49,
+                30,
+                LocalDate.of(2026, 11, 30),
+                null,
+                null,
+                false,
+                null,
+                "001-786474-391",
+                0.95
+        );
+
+        DebtScanPreviewResponse preview = debtService.previewDebtScan(updatedStatement);
+
+        assertThat(preview.action()).isEqualTo(ReconciliationAction.UPDATE_DEBT_BALANCE);
+        assertThat(preview.matchedDebtId()).isEqualTo(loan1Id);
+        assertThat(preview.recommendedPrincipal()).isEqualByComparingTo(BigDecimal.valueOf(23_280_885));
+    }
+
+    @Test
+    @DisplayName("Should delete debt and cascade cleanup schedules, payments, and ledger references")
+    void testDeleteDebtCleansUpSchedulesAndPayments() {
+        UUID debtId = UUID.randomUUID();
+        Debt debt = new Debt();
+        debt.setName("Personal Instalment Loan");
+        debt.setCreditor("Standard Chartered");
+        debt.setStatus(DebtStatus.ACTIVE);
+
+        when(debtRepo.findById(debtId)).thenReturn(Optional.of(debt));
+
+        debtService.deleteDebt(debtId);
+
+        verify(transactionRepo, times(1)).clearDebtId(debtId);
+        verify(scheduleRepo, times(1)).deleteByDebtId(debtId);
+        verify(paymentRepo, times(1)).deleteByDebtId(debtId);
+        verify(debtRepo, times(1)).delete(debt);
+    }
 }

@@ -87,6 +87,10 @@ public class DebtService {
         debt.setMaturityDate(req.maturityDate());
         debt.setStatus(DebtStatus.ACTIVE);
         debt.setNotes(req.notes());
+        String accNum = req.accountNumber() != null && !req.accountNumber().isBlank()
+                ? req.accountNumber().trim()
+                : extractAccountNumber(req.notes(), req.name());
+        debt.setAccountNumber(accNum);
 
         if (req.monthlyMinimumDue() != null && req.monthlyMinimumDue().compareTo(BigDecimal.ZERO) > 0) {
             debt.setMonthlyMinimumDue(req.monthlyMinimumDue());
@@ -137,6 +141,16 @@ public class DebtService {
     @Transactional(readOnly = true)
     public List<DebtSchedule> getDebtSchedule(UUID debtId) {
         return scheduleRepo.findByDebtIdOrderByDueDateAsc(debtId);
+    }
+
+    @Transactional
+    public void deleteDebt(UUID id) {
+        Debt debt = getDebtById(id);
+        transactionRepo.clearDebtId(id);
+        scheduleRepo.deleteByDebtId(id);
+        paymentRepo.deleteByDebtId(id);
+        debtRepo.delete(debt);
+        log.info("Debt deleted: id={}, name={}, creditor={}", id, debt.getName(), debt.getCreditor());
     }
 
     @Transactional
@@ -352,14 +366,14 @@ public class DebtService {
             double factor = Math.pow(1.0 + r, -n);
             double estL0Annuity = (P / r) * (1.0 - factor);
             long roundedTrancheAnnuity = Math.round(estL0Annuity / 5_000_000.0) * 5_000_000L;
-            if (roundedTrancheAnnuity >= currentPrincipal.doubleValue() && Math.abs(estL0Annuity - roundedTrancheAnnuity) <= 50_000.0) {
+            if (roundedTrancheAnnuity >= currentPrincipal.doubleValue() && Math.abs(estL0Annuity - roundedTrancheAnnuity) <= 500_000.0) {
                 return new ReconstructedLoanTerms(BigDecimal.valueOf(roundedTrancheAnnuity), n);
             }
 
             // Flat loan test: P = L0 * (1/n + r_monthly) => L0 = P / (1/n + r_monthly)
             double estL0Flat = P / ((1.0 / n) + r);
             long roundedTrancheFlat = Math.round(estL0Flat / 5_000_000.0) * 5_000_000L;
-            if (roundedTrancheFlat >= currentPrincipal.doubleValue() && Math.abs(estL0Flat - roundedTrancheFlat) <= 50_000.0) {
+            if (roundedTrancheFlat >= currentPrincipal.doubleValue() && Math.abs(estL0Flat - roundedTrancheFlat) <= 500_000.0) {
                 return new ReconstructedLoanTerms(BigDecimal.valueOf(roundedTrancheFlat), n);
             }
         }
@@ -371,13 +385,17 @@ public class DebtService {
      * Resolves bank or lender name from creditor string, product name, or statement notes.
      */
     public static String detectCreditor(String creditor, String debtName, String note) {
+        return detectCreditor(creditor, debtName, note, null);
+    }
+
+    public static String detectCreditor(String creditor, String debtName, String note, String accountNumber) {
         if (creditor != null && !creditor.isBlank() && !creditor.equalsIgnoreCase("Unknown Creditor")) {
             return creditor.trim();
         }
-        String combined = ((debtName != null ? debtName : "") + " " + (note != null ? note : "")).toLowerCase();
-        if (combined.contains("smartcredit")) return "SmartCredit";
+        String combined = ((debtName != null ? debtName : "") + " " + (note != null ? note : "") + " " + (accountNumber != null ? accountNumber : "")).toLowerCase();
+        if (combined.contains("smartcredit") || combined.contains("730-")) return "SmartCredit";
         if (combined.contains("vpbank") || combined.contains("vpb")) return "VPBank";
-        if (combined.contains("standard chartered") || combined.contains("001-786")) return "Standard Chartered";
+        if (combined.contains("standard chartered") || combined.contains("001-786") || combined.contains("001-")) return "Standard Chartered";
         if (combined.contains("shinhan")) return "Shinhan Bank";
         if (combined.contains("techcombank") || combined.contains("tcb")) return "Techcombank";
         if (combined.contains("fe credit")) return "FE Credit";
@@ -390,6 +408,44 @@ public class DebtService {
         if (combined.contains("shopee") || combined.contains("spaylater")) return "Shopee SPayLater";
         if (combined.contains("momo")) return "MoMo";
         return "Unknown Creditor";
+    }
+
+    /**
+     * Extracts and normalizes contract / account numbers (e.g. 001-786474-391, 730-006-119074).
+     */
+    public static String extractAccountNumber(String... candidates) {
+        if (candidates == null) return null;
+        java.util.regex.Pattern hyphenPattern = java.util.regex.Pattern.compile("(?i)(?:account|tài khoản|hợp đồng|contract|no\\.?|số)?\\s*[:#]?\\s*(\\b\\d{3}-\\d{3,7}-\\d{3,6}\\b)");
+        java.util.regex.Pattern labeledPattern = java.util.regex.Pattern.compile("(?i)(?:account|tài khoản|hợp đồng|contract|số tk|so tk)\\s*[:#]?\\s*([0-9A-Za-z-]{6,25})");
+
+        for (String c : candidates) {
+            if (c == null || c.isBlank()) continue;
+            java.util.regex.Matcher m = hyphenPattern.matcher(c);
+            if (m.find()) {
+                return m.group(1).trim();
+            }
+            java.util.regex.Matcher m2 = labeledPattern.matcher(c);
+            if (m2.find()) {
+                return m2.group(1).trim();
+            }
+        }
+        return null;
+    }
+
+    public static String resolveAccountNumber(DebtOcrResult ocr) {
+        if (ocr == null) return null;
+        if (ocr.accountNumber() != null && !ocr.accountNumber().isBlank()) {
+            return ocr.accountNumber().trim();
+        }
+        return extractAccountNumber(ocr.note(), ocr.debtName());
+    }
+
+    public static String resolveAccountNumber(Debt d) {
+        if (d == null) return null;
+        if (d.getAccountNumber() != null && !d.getAccountNumber().isBlank()) {
+            return d.getAccountNumber().trim();
+        }
+        return extractAccountNumber(d.getNotes(), d.getName());
     }
 
     @Transactional(readOnly = true)
@@ -522,7 +578,8 @@ public class DebtService {
                 ? ocr.statementDate().plusMonths(termMonths)
                 : LocalDate.now(ZONE).plusMonths(termMonths);
 
-        String recommendedCreditor = detectCreditor(ocr.creditor(), ocr.debtName(), ocr.note());
+        String recommendedAccountNumber = resolveAccountNumber(ocr);
+        String recommendedCreditor = detectCreditor(ocr.creditor(), ocr.debtName(), ocr.note(), recommendedAccountNumber);
 
         String recommendedName = ocr.debtName() != null && !ocr.debtName().isBlank()
                 ? ocr.debtName()
@@ -538,6 +595,7 @@ public class DebtService {
                 action,
                 recommendedName,
                 recommendedCreditor,
+                recommendedAccountNumber,
                 recommendedType,
                 originalPrincipal,
                 principal,
@@ -566,9 +624,13 @@ public class DebtService {
                 BigDecimal orig = req.originalPrincipal() != null && req.originalPrincipal().compareTo(BigDecimal.ZERO) > 0
                         ? req.originalPrincipal()
                         : req.principal();
+                String accNum = req.accountNumber() != null && !req.accountNumber().isBlank()
+                        ? req.accountNumber().trim()
+                        : extractAccountNumber(req.notes(), req.name());
                 CreateDebtRequest createReq = new CreateDebtRequest(
                         req.name(),
                         req.creditor(),
+                        accNum,
                         req.debtType() != null ? req.debtType() : DebtType.AMORTIZING_LOAN,
                         "VND",
                         orig,
@@ -593,6 +655,9 @@ public class DebtService {
                     if (req.principal().compareTo(BigDecimal.ZERO) <= 0) {
                         debt.setStatus(DebtStatus.PAID_OFF);
                     }
+                }
+                if (req.accountNumber() != null && !req.accountNumber().isBlank() && debt.getAccountNumber() == null) {
+                    debt.setAccountNumber(req.accountNumber().trim());
                 }
                 if (req.monthlyDue() != null && req.monthlyDue().compareTo(BigDecimal.ZERO) > 0) {
                     debt.setMonthlyMinimumDue(req.monthlyDue());
@@ -635,22 +700,78 @@ public class DebtService {
             return null;
         }
 
+        String ocrAccount = resolveAccountNumber(ocr);
         String creditor = ocr.creditor() != null ? ocr.creditor().toLowerCase().trim() : "";
         String debtName = ocr.debtName() != null ? ocr.debtName().toLowerCase().trim() : "";
 
+        // Tier 1: Strict Account / Contract Number Matching
+        if (ocrAccount != null && !ocrAccount.isBlank()) {
+            for (Debt d : activeDebts) {
+                String existingAccount = resolveAccountNumber(d);
+                if (existingAccount != null && !existingAccount.isBlank()) {
+                    if (existingAccount.equalsIgnoreCase(ocrAccount)) {
+                        return d; // Definite match for identical contract
+                    }
+                    // Both have account numbers and they differ -> definitely distinct debts!
+                }
+            }
+            // If OCR has an account number and none of the active debts with account numbers matched:
+            // Check if there is an active debt with NULL account number that has the EXACT same name, creditor, and within 15% principal
+            for (Debt d : activeDebts) {
+                String existingAccount = resolveAccountNumber(d);
+                if (existingAccount != null && !existingAccount.isBlank()) {
+                    continue; // Skip debts with different account numbers
+                }
+                String existingCreditor = d.getCreditor() != null ? d.getCreditor().toLowerCase().trim() : "";
+                String existingName = d.getName() != null ? d.getName().toLowerCase().trim() : "";
+                boolean creditorMatch = !creditor.isEmpty() && (existingCreditor.contains(creditor) || creditor.contains(existingCreditor));
+                boolean nameMatch = !debtName.isEmpty() && existingName.equalsIgnoreCase(debtName);
+
+                if (creditorMatch && nameMatch && d.getCurrentPrincipal() != null && ocr.currentPrincipal() != null) {
+                    double diffRatio = Math.abs(d.getCurrentPrincipal().doubleValue() - ocr.currentPrincipal().doubleValue())
+                            / Math.max(d.getCurrentPrincipal().doubleValue(), ocr.currentPrincipal().doubleValue());
+                    if (diffRatio <= 0.15) {
+                        return d;
+                    }
+                }
+            }
+            // OCR has an account number that doesn't match -> Treat as distinct debt!
+            return null;
+        }
+
+        // Tier 2: Matching when incoming OCR lacks account number
         for (Debt d : activeDebts) {
+            String existingAccount = resolveAccountNumber(d);
+            if (existingAccount != null && !existingAccount.isBlank()) {
+                // Existing debt has a specific account number, but incoming OCR doesn't -> avoid accidental overwrite
+                continue;
+            }
+
             String existingCreditor = d.getCreditor() != null ? d.getCreditor().toLowerCase().trim() : "";
             String existingName = d.getName() != null ? d.getName().toLowerCase().trim() : "";
 
-            // Check exact or partial creditor match
             boolean creditorMatch = !creditor.isEmpty() && (existingCreditor.contains(creditor) || creditor.contains(existingCreditor));
-            boolean nameMatch = !debtName.isEmpty() && (existingName.contains(debtName) || debtName.contains(existingName));
+            boolean nameMatch = !debtName.isEmpty() && (existingName.equalsIgnoreCase(debtName));
 
-            if (creditorMatch && (ocr.debtType() == null || ocr.debtType() == d.getDebtType())) {
-                return d;
+            if (ocr.debtType() != null && d.getDebtType() != null && ocr.debtType() != d.getDebtType()) {
+                continue;
             }
-            if (nameMatch) {
-                return d;
+
+            if (ocr.debtType() == DebtType.REVOLVING_CREDIT || d.getDebtType() == DebtType.REVOLVING_CREDIT) {
+                if (creditorMatch || nameMatch) {
+                    return d;
+                }
+            } else if (creditorMatch && nameMatch) {
+                // AMORTIZING_LOAN: verify that balances are reasonably close before assuming it's the same loan
+                if (d.getCurrentPrincipal() != null && ocr.currentPrincipal() != null) {
+                    double diffRatio = Math.abs(d.getCurrentPrincipal().doubleValue() - ocr.currentPrincipal().doubleValue())
+                            / Math.max(d.getCurrentPrincipal().doubleValue(), ocr.currentPrincipal().doubleValue());
+                    if (diffRatio <= 0.25) {
+                        return d;
+                    }
+                } else {
+                    return d;
+                }
             }
         }
         return null;
