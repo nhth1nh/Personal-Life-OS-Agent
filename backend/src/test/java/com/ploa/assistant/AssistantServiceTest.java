@@ -156,6 +156,10 @@ class AssistantServiceTest {
         assertThat(assistantService.shouldSkipToolPlanning("Check my sleep from last night")).isFalse();
         assertThat(assistantService.shouldSkipToolPlanning("Sync my watch")).isFalse();
         assertThat(assistantService.shouldSkipToolPlanning("Remember that my name is Alex")).isFalse();
+        assertThat(assistantService.shouldSkipToolPlanning("tình hình hôm nay")).isFalse();
+        assertThat(assistantService.shouldSkipToolPlanning("tổng quan")).isFalse();
+        assertThat(assistantService.shouldSkipToolPlanning("chạy bộ")).isFalse();
+        assertThat(assistantService.shouldSkipToolPlanning("danh sách nợ")).isFalse();
     }
 
     @Test
@@ -172,5 +176,23 @@ class AssistantServiceTest {
 
         assertThat(plan.tools()).containsExactly("recordExpense");
         assertThat(plan.date()).isEqualTo("today");
+    }
+
+    @Test
+    @DisplayName("Should parse full context and debt payoff tool plans")
+    void shouldParseFullContextAndPayoffPlan() throws Exception {
+        String json = """
+                {
+                  "tools": ["getCashFlowStatus", "getDebtPortfolio", "simulateDebtPayoff", "getWorkouts"],
+                  "date": "today",
+                  "surplusVnd": 2500000
+                }
+                """;
+        AssistantService assistantService = createService();
+        AssistantService.ToolPlan plan = assistantService.parseToolPlan(json);
+
+        assertThat(plan.tools()).containsExactly("getCashFlowStatus", "getDebtPortfolio", "simulateDebtPayoff", "getWorkouts");
+        assertThat(plan.date()).isEqualTo("today");
+        assertThat(plan.surplusVnd()).isEqualTo(2500000L);
     }
 }
