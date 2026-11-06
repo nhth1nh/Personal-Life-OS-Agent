@@ -44,7 +44,7 @@ services:
       OLLAMA_TEXT_MODEL: ${OLLAMA_TEXT_MODEL:-llama3.2}
       SPRING_PROFILES_ACTIVE: ${SPRING_PROFILES_ACTIVE:-cloud}
     ports:
-      - "8080:8080"
+      - "127.0.0.1:8080:8080"
     volumes:
       - backend_logs:/app/logs
 
@@ -57,7 +57,7 @@ services:
     depends_on:
       - backend
     ports:
-      - "3000:80"
+      - "127.0.0.1:3000:80"
 
   garmin-puller:
     build:

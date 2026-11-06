@@ -11,6 +11,7 @@ import {
 } from 'lucide-react';
 import { api } from '../api/client';
 import type { ChatMessage } from '../types';
+import { MarkdownContent } from './common/MarkdownContent';
 
 export const AssistantChatView: React.FC = () => {
   const [messages, setMessages] = useState<ChatMessage[]>([
@@ -158,7 +159,7 @@ export const AssistantChatView: React.FC = () => {
                   ? 'bg-blue-600 text-white rounded-tr-none' 
                   : 'bg-slate-950/70 border border-slate-800/80 text-slate-200 rounded-tl-none'
               }`}>
-                <div className="whitespace-pre-wrap">{m.content}</div>
+                <MarkdownContent content={m.content} variant={isUser ? 'user' : 'assistant'} />
 
                 {m.groundingPills && m.groundingPills.length > 0 && (
                   <div className="mt-2.5 pt-2 border-t border-slate-800/80 flex flex-wrap gap-1">

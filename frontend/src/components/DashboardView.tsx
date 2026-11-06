@@ -14,6 +14,7 @@ import {
 } from 'lucide-react';
 import { api } from '../api/client';
 import type { ReadinessResult, FinanceAnalyticsResponse, ActivitySummary } from '../types';
+import { MarkdownContent } from './common/MarkdownContent';
 
 interface DashboardViewProps {
   onNavigate: (tab: string) => void;
@@ -289,14 +290,14 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate }) => {
           </div>
         </div>
 
-        <div className="mt-6 prose prose-invert max-w-none text-slate-300 text-sm leading-relaxed whitespace-pre-wrap font-sans bg-slate-950/40 p-6 rounded-2xl border border-slate-800/60">
+        <div className="mt-6 bg-slate-950/40 p-6 rounded-2xl border border-slate-800/60">
           {loadingBriefing ? (
             <div className="flex items-center justify-center py-12 space-x-3 text-slate-400">
               <RefreshCw className="w-5 h-5 animate-spin text-cyan-400" />
               <span>Synthesizing live briefing with temporal context...</span>
             </div>
           ) : (
-            briefing
+            <MarkdownContent content={briefing} variant="briefing" />
           )}
         </div>
       </div>
