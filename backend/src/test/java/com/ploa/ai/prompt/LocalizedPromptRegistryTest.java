@@ -31,10 +31,19 @@ class LocalizedPromptRegistryTest {
     @Test
     @DisplayName("Should fallback to default prompt when localized template is not present")
     void testFallbackToDefaultPrompt() {
-        // morning-briefing currently exists in default, not in ja
+        // morning-briefing exists in default and vi, not in ja
         String prompt = registry.getPrompt("briefing/morning-briefing", "ja");
         assertThat(prompt).isNotEmpty();
-        assertThat(prompt).contains("Recovery: Interpret readiness level");
+        assertThat(prompt).contains("Interpret recovery readiness");
+    }
+
+    @Test
+    @DisplayName("Should load localized Vietnamese morning briefing when default locale 'vi' is used")
+    void testLoadVietnameseBriefingPrompt() {
+        String prompt = registry.getPrompt("briefing/morning-briefing", "vi");
+        assertThat(prompt).isNotEmpty();
+        assertThat(prompt).contains("Điểm tin Buổi sáng");
+        assertThat(prompt).contains("ANTI-BAREM");
     }
 
     @Test
@@ -52,7 +61,7 @@ class LocalizedPromptRegistryTest {
         String rendered = registry.render("briefing/morning-briefing", "default", Map.of(
                 "non_existent_key", "value"
         ));
-        assertThat(rendered).contains("write a concise, motivating morning briefing");
+        assertThat(rendered).contains("Morning Briefing");
     }
 
     @Test

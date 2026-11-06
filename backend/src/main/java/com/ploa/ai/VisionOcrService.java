@@ -97,6 +97,7 @@ public class VisionOcrService {
               "document_type": "AMORTIZING_LOAN_CONTRACT" | "CREDIT_CARD_STATEMENT" | "BNPL_SCHEDULE" | "DEBT_PAYMENT_SLIP" | "UNKNOWN",
               "creditor": "<Bank or lender name, e.g. VPBank, Techcombank, Shinhan Bank, FE Credit, Apple/VPBank, Shopee SPayLater, MoMo>" | null,
               "debt_name": "<Descriptive name, e.g. Consumer Loan, Vay tiền mặt trung hạn, VPBank StepUp Visa, iPhone 16 Installment>" | null,
+              "account_number": "<Contract or loan account number, e.g. 001-786474-391, 730-006-119074>" | null,
               "debt_type": "AMORTIZING_LOAN" | "REVOLVING_CREDIT" | "INSTALLMENT_BNPL" | "PEER_DEBT",
               "original_principal": <integer in VND, total original loan amount borrowed, e.g. 40000000> | null,
               "current_principal": <integer in VND, current outstanding balance or dư nợ còn lại, e.g. 30964757> | null,
@@ -117,6 +118,9 @@ public class VisionOcrService {
             
             Strict Vietnamese Banking & Entity Rules:
             - Amounts MUST be integers in VND without commas or decimal points. E.g. "40.000.000 đ" -> 40000000, "VND 100,000,000.00" -> 100000000, "VND 82,959,494.00" -> 82959494 (strip trailing cents/decimals .00).
+            - Account / Contract Number:
+              * Extract any loan account number, contract reference, or card number into account_number (e.g. "001-786474-391", "730-006-119074").
+              * This is critical to distinguish different loans from the same creditor.
             - Creditor / Lender Identification: Look at branch names, app headers, logos, and account terminology. E.g.:
               * "Chi nhánh quản lý: Trung tâm SmartCredit" or "SmartCredit" -> creditor: "SmartCredit".
               * "VPBank" / "VPBank NEO" -> creditor: "VPBank".
