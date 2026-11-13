@@ -15,12 +15,14 @@ import {
 import { api } from '../api/client';
 import type { ReadinessResult, FinanceAnalyticsResponse, ActivitySummary } from '../types';
 import { MarkdownContent } from './common/MarkdownContent';
+import { useI18n } from '../context/I18nContext';
 
 interface DashboardViewProps {
   onNavigate: (tab: string) => void;
 }
 
 export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate }) => {
+  const { t } = useI18n();
   const [readiness, setReadiness] = useState<ReadinessResult | null>(null);
   const [todayBio, setTodayBio] = useState<any>(null);
   const [finance, setFinance] = useState<FinanceAnalyticsResponse | null>(null);
@@ -107,7 +109,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate }) => {
         {/* Recovery State Card */}
         <div className="bg-slate-900/60 border border-slate-800 rounded-2xl p-5 relative overflow-hidden backdrop-blur-md">
           <div className="flex items-center justify-between mb-3">
-            <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Physiological Readiness</span>
+            <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider">{t('dashboard.readiness_title', 'Physiological Readiness')}</span>
             <Heart className="w-4 h-4 text-rose-400" />
           </div>
           <div className="flex items-baseline space-x-2">
@@ -131,7 +133,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate }) => {
         {/* Body Battery & Stress Card */}
         <div className="bg-slate-900/60 border border-slate-800 rounded-2xl p-5 relative overflow-hidden backdrop-blur-md">
           <div className="flex items-center justify-between mb-3">
-            <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Body Battery & Energy</span>
+            <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider">{t('dashboard.body_battery_title', 'Body Battery & Energy')}</span>
             <BatteryCharging className="w-4 h-4 text-cyan-400" />
           </div>
           <div className="flex items-baseline space-x-2">
@@ -154,7 +156,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate }) => {
         {/* Sleep Architecture Card */}
         <div className="bg-slate-900/60 border border-slate-800 rounded-2xl p-5 relative overflow-hidden backdrop-blur-md">
           <div className="flex items-center justify-between mb-3">
-            <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Sleep Recovery</span>
+            <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider">{t('dashboard.sleep_debt_title', 'Sleep Recovery')}</span>
             <Moon className="w-4 h-4 text-indigo-400" />
           </div>
           <div className="flex items-baseline space-x-2">
@@ -179,7 +181,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate }) => {
         {/* Safe Daily Allowance & Burn Rate Card */}
         <div className="bg-slate-900/60 border border-slate-800 rounded-2xl p-5 relative overflow-hidden backdrop-blur-md">
           <div className="flex items-center justify-between mb-3">
-            <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Safe Daily Allowance</span>
+            <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider">{t('dashboard.safe_daily_title', 'Safe Daily Allowance')}</span>
             <TrendingUp className="w-4 h-4 text-emerald-400" />
           </div>
           <div className="flex items-baseline space-x-2">
@@ -266,7 +268,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate }) => {
                 }`}
               >
                 <SunMedium className="w-3.5 h-3.5" />
-                <span>Morning 07:30</span>
+                <span>{t('dashboard.morning_briefing', 'Morning Briefing')}</span>
               </button>
               <button
                 onClick={() => loadBriefing('evening')}
@@ -275,14 +277,14 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate }) => {
                 }`}
               >
                 <Moon className="w-3.5 h-3.5" />
-                <span>Evening 21:30</span>
+                <span>{t('dashboard.evening_briefing', 'Evening Summary')}</span>
               </button>
             </div>
 
             <button
               onClick={() => loadBriefing(briefingType)}
               disabled={loadingBriefing}
-              title="Refresh Briefing"
+              title={t('dashboard.refresh_briefing', 'Refresh Briefing')}
               className="p-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 transition-all disabled:opacity-50"
             >
               <RefreshCw className={`w-4 h-4 ${loadingBriefing ? 'animate-spin text-cyan-400' : ''}`} />

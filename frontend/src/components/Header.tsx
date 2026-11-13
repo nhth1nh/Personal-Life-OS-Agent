@@ -10,9 +10,11 @@ import {
   CheckCircle2,
   XCircle,
   Calendar,
-  ChevronDown
+  ChevronDown,
+  Globe
 } from 'lucide-react';
 import { api, getApiKey, setApiKey } from '../api/client';
+import { useI18n } from '../context/I18nContext';
 
 interface HeaderProps {
   currentTab: string;
@@ -21,6 +23,7 @@ interface HeaderProps {
 }
 
 export const Header: React.FC<HeaderProps> = ({ currentTab, onTabChange, onRefreshAll }) => {
+  const { locale, setLocale, t } = useI18n();
   const [syncing, setSyncing] = useState(false);
   const [syncMsg, setSyncMsg] = useState<{ text: string; ok: boolean } | null>(null);
   const [showKeyModal, setShowKeyModal] = useState(false);
@@ -54,12 +57,12 @@ export const Header: React.FC<HeaderProps> = ({ currentTab, onTabChange, onRefre
 
       const res = await api.triggerGarminPull(options);
       setSyncMsg({ 
-        text: res.message || `Garmin sync completed (${res.syncedDays || 1} day(s))`, 
+        text: res.message || `${t('header.sync_success', 'Garmin sync completed')} (${res.syncedDays || 1} day(s))`, 
         ok: res.status === 'success' 
       });
       onRefreshAll();
     } catch (err: any) {
-      setSyncMsg({ text: err.message || 'Garmin sync failed', ok: false });
+      setSyncMsg({ text: err.message || t('header.sync_fail', 'Garmin sync failed'), ok: false });
     } finally {
       setSyncing(false);
       setTimeout(() => setSyncMsg(null), 7000);
@@ -73,11 +76,11 @@ export const Header: React.FC<HeaderProps> = ({ currentTab, onTabChange, onRefre
   };
 
   const tabs = [
-    { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
-    { id: 'health', label: 'Biometrics', icon: Activity },
-    { id: 'finance', label: 'Finance & Ledger', icon: Wallet },
-    { id: 'scan', label: 'Receipt Scanner', icon: Camera },
-    { id: 'chat', label: 'AI Partner', icon: MessageSquareCode },
+    { id: 'dashboard', label: t('nav.dashboard', 'Dashboard'), icon: LayoutDashboard },
+    { id: 'health', label: t('nav.health', 'Biometrics'), icon: Activity },
+    { id: 'finance', label: t('nav.finance', 'Finance & Ledger'), icon: Wallet },
+    { id: 'scan', label: t('nav.scan', 'Receipt Scanner'), icon: Camera },
+    { id: 'chat', label: t('nav.chat', 'AI Partner'), icon: MessageSquareCode },
   ];
 
   return (
@@ -121,6 +124,16 @@ export const Header: React.FC<HeaderProps> = ({ currentTab, onTabChange, onRefre
           </nav>
 
           <div className="flex items-center space-x-2">
+            {/* Language Switcher Pill */}
+            <button
+              onClick={() => setLocale(locale === 'vi' ? 'en' : 'vi')}
+              title={locale === 'vi' ? 'Chuyển sang English' : 'Switch to Tiếng Việt'}
+              className="flex items-center space-x-1.5 px-2.5 py-1.5 rounded-lg bg-slate-800/80 hover:bg-slate-700/80 border border-slate-700 text-xs text-slate-200 transition-all font-medium"
+            >
+              <Globe className="w-3.5 h-3.5 text-cyan-400" />
+              <span className="font-semibold uppercase tracking-wider">{locale === 'vi' ? '🇻🇳 VI' : '🇬🇧 EN'}</span>
+            </button>
+
             <button
               onClick={() => setShowSyncModal(true)}
               disabled={syncing}
@@ -128,13 +141,13 @@ export const Header: React.FC<HeaderProps> = ({ currentTab, onTabChange, onRefre
               className="flex items-center space-x-1.5 px-3 py-1.5 rounded-lg bg-slate-800/80 hover:bg-slate-700/80 border border-slate-700 text-xs text-slate-200 transition-all font-medium disabled:opacity-50"
             >
               <RefreshCw className={`w-3.5 h-3.5 text-cyan-400 ${syncing ? 'animate-spin' : ''}`} />
-              <span className="hidden sm:inline">{syncing ? 'Syncing...' : 'Sync Garmin'}</span>
+              <span className="hidden sm:inline">{syncing ? t('header.syncing', 'Syncing...') : t('header.sync_garmin', 'Sync Garmin')}</span>
               <ChevronDown className="w-3 h-3 text-slate-400" />
             </button>
 
             <button
               onClick={() => setShowKeyModal(true)}
-              title="Configure API Secret Key"
+              title={t('header.api_key', 'API Key')}
               className="p-1.5 rounded-lg bg-slate-800/80 hover:bg-slate-700/80 border border-slate-700 text-slate-300 transition-all"
             >
               <KeyRound className="w-4 h-4 text-amber-400" />

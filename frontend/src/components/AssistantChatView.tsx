@@ -12,13 +12,15 @@ import {
 import { api } from '../api/client';
 import type { ChatMessage } from '../types';
 import { MarkdownContent } from './common/MarkdownContent';
+import { useI18n } from '../context/I18nContext';
 
 export const AssistantChatView: React.FC = () => {
+  const { t } = useI18n();
   const [messages, setMessages] = useState<ChatMessage[]>([
     {
       id: 'init-1',
       role: 'assistant',
-      content: 'Hello! I am your **Personal Life OS Assistant**. All my answers are strictly grounded in your deterministic Garmin biometrics and financial ledger. How can I help you today?',
+      content: t('chat.init_welcome', 'Hello! I am your **Personal Life OS Assistant**. All my answers are strictly grounded in your deterministic Garmin biometrics and financial ledger. How can I help you today?'),
       timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
       groundingPills: ['Empirical Truth', 'Temporal UTC+7']
     }
@@ -107,10 +109,10 @@ export const AssistantChatView: React.FC = () => {
   };
 
   const quickPrompts = [
-    'Should I train high intensity today?',
-    'How much safe daily budget do I have left?',
-    'How was my sleep debt this week?',
-    'What was my spending breakdown this month?'
+    t('chat.quick_train', 'Should I train high intensity today?'),
+    t('chat.quick_budget', 'How much safe daily budget do I have left?'),
+    t('chat.quick_sleep', 'How was my sleep debt this week?'),
+    t('chat.quick_spend', 'What was my spending breakdown this month?')
   ];
 
   return (
@@ -123,13 +125,13 @@ export const AssistantChatView: React.FC = () => {
           </div>
           <div>
             <div className="flex items-center space-x-2">
-              <h2 className="font-bold text-white text-sm">Life OS Conversational Partner</h2>
+              <h2 className="font-bold text-white text-sm">{t('chat.title', 'Life OS Conversational Partner')}</h2>
               <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-950 text-emerald-400 border border-emerald-800/60 flex items-center space-x-1">
                 <ShieldCheck className="w-3 h-3" />
-                <span>Deterministic Grounding</span>
+                <span>{t('chat.badge', 'Deterministic Grounding')}</span>
               </span>
             </div>
-            <p className="text-[11px] text-slate-400">Contextual advisor powered by real-time biometrics & finance</p>
+            <p className="text-[11px] text-slate-400">{t('chat.subtitle', 'Contextual advisor powered by real-time biometrics & finance')}</p>
           </div>
         </div>
 
@@ -250,7 +252,7 @@ export const AssistantChatView: React.FC = () => {
           value={input}
           onChange={(e) => setInput(e.target.value)}
           onKeyDown={handleKeyDown}
-          placeholder="Ask a question about your recovery or budget, or log an expense..."
+          placeholder={t('chat.placeholder', 'Ask a question about your recovery or budget, or log an expense...')}
           rows={1}
           className="flex-1 bg-slate-900 border border-slate-800 rounded-xl px-4 py-2.5 text-xs text-slate-100 placeholder-slate-500 focus:outline-none focus:border-cyan-500 resize-none max-h-28"
         />

@@ -243,6 +243,14 @@ export const api = {
   getMorningBriefing: () => request<{ briefing: string }>('/briefing/morning/preview'),
   getEveningSummary: () => request<{ summary: string }>('/briefing/evening/preview'),
 
+  // CMS Multi-Language Localization
+  getCmsTranslations: (locale?: string) =>
+    request<{ locale: string; defaultLocale: string; keyCount: number; translations: Record<string, string> }>(
+      `/cms/i18n${locale ? `?locale=${encodeURIComponent(locale)}` : ''}`
+    ),
+  getSupportedLocales: () =>
+    request<Array<{ code: string; name: string; flag: string }>>('/cms/locales'),
+
   // Assistant Chat
   chat: async (message: string, file?: File): Promise<{ reply: string }> => {
     const apiKey = getApiKey();
